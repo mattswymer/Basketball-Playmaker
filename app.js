@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const frameNotes = document.getElementById('frame-notes');
     const toolbox = document.getElementById('drawing-toolbox');
     const playerToolIcons = document.querySelectorAll('.player-tool-icon');
-
+    
     // NEW: Loading Modal Elements
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingText.textContent = message;
         loadingOverlay.classList.remove('hidden');
     }
-
+    
     function hideLoading() {
         loadingOverlay.classList.add('hidden');
     }
@@ -728,7 +728,7 @@ document.addEventListener('DOMContentLoaded', () => {
         appState.isExporting = true;
         exportPdfBtn.disabled = true;
         showLoading('Generating PDF...'); // Show modal
-
+        
         // Wrap in setTimeout to allow modal to render
         setTimeout(() => {
             const { jsPDF } = window.jspdf;
@@ -753,34 +753,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (i > 0 && frameIndexInPage === 0) {
                     doc.addPage();
                 }
-
+                
                 switchFrame(i);
                 const imgData = canvas.toDataURL('image/png');
-
+                
                 const yPos = margin + (frameIndexInPage * frameRowH) + 5;
                 const imgX = margin;
-                doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH);
-
+                doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH); 
+                
                 const notesX = margin + imgColW + gutter;
                 doc.setFontSize(14);
                 doc.setFont(undefined, 'bold');
-                doc.text(`Frame ${i + 1}`, notesX, yPos + 5);
-
+                doc.text(`Frame ${i + 1}`, notesX, yPos + 5); 
+                
                 doc.setFontSize(10);
                 doc.setFont(undefined, 'normal');
                 const notesLines = doc.splitTextToSize(frame.notes, notesColW);
                 doc.text(notesLines, notesX, yPos + 12);
             }
-
+            
             doc.save(`${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`);
-
+            
             switchFrame(originalFrameIndex);
             appState.isExporting = false;
             exportPdfBtn.disabled = false;
             hideLoading(); // Hide modal
         }, 100);
     });
-
+    
     // UPDATED: GIF Export with loading modal AND new quality settings
     exportGifBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
