@@ -12,7 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadBtn = document.getElementById('load-play');
     const loadFileInput = document.getElementById('load-file-input');
     const animateBtn = document.getElementById('animate-play');
-    const exportGifBtn = document.getElementById('export-gif');
+    // UPDATED:
+    const exportVideoBtn = document.getElementById('export-video-btn');
     const exportPdfBtn = document.getElementById('export-pdf');
     const newPlayBtn = document.getElementById('new-play');
     const addFrameBtn = document.getElementById('add-frame');
@@ -87,8 +88,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const LINE_COLOR = '#343a40';
     const ANIMATION_SPEED = 1500;
     const CLICK_TOLERANCE = 10;
-
-    // REMOVED: RIM_COORDS constant is no longer needed
 
     // --- 4. MAIN DRAWING & HELPER FUNCTIONS ---
 
@@ -228,7 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     ctx.lineTo(end.x - Math.sin(angle) * offset, end.y + Math.cos(angle) * offset);
                     ctx.stroke();
 
-                    // Only draw arrowhead for the second line to prevent overlap
                     drawArrowhead({x: end.x - Math.sin(angle) * offset, y: end.y + Math.cos(angle) * offset}, angle);
 
                     continue; // Skip generic line drawing below
@@ -254,7 +252,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 ctx.setLineDash([]);
 
-                // Draw endcap only on the last segment
                 if (i === points.length - 2) {
                     const angle = Math.atan2(end.y - start.y, end.x - start.x);
                     switch (type) {
@@ -511,7 +508,6 @@ document.addEventListener('DOMContentLoaded', () => {
             instructionText.textContent = 'Click on an offensive player to give them the ball';
             canvas.classList.add('tool-assign-ball');
         } else {
-            // UPDATED: All actions (including shoot) now use the same manual instruction
             instructionText.textContent = `Click a player to start drawing a ${tool} line. Left-click to finish, right-click to add a waypoint.`;
         }
     });
@@ -922,50 +918,143 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 100);
     });
 
-    exportGifBtn.addEventListener('click', () => {
+    // --- UPDATED: exportVideoBtn (was exportGifBtn) ---
+    exportVideoBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
+        if (appState.frames.length < 2) {
+            alert("You need at least two frames to animate for a video.");
+            return;
+        }
 
         appState.isExporting = true;
-        exportGifBtn.disabled = true;
-        showLoading('Generating GIF...');
+        exportVideoBtn.disabled = true;
+        showLoading('Recording Video...');
 
-        setTimeout(() => {
-            const originalFrameIndex = appState.currentFrameIndex;
+        // 1. Set up the MediaRecorder
+        const stream = canvas.captureStream(30); // 30 FPS
+        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        const recordedChunks = [];
+
+        recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                recordedChunks.push(e.data);
+            }
+        };
+
+        // 2. When recording stops, create the download
+        recorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
             const playName = playNameInput.value || 'Untitled Play';
+            a.href = url;
+            a.download = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
 
-            const frameImages = [];
-            for (let i = 0; i < appState.frames.length; i++) {
-                switchFrame(i);
-                frameImages.push(canvas.toDataURL('image/png'));
+            // Restore UI
+            appState.isExporting = false;
+            exportVideoBtn.disabled = false;
+            hideLoading();
+            switchFrame(0); // Go back to start
+        };
+
+        // 3. Start recording, then start the animation
+        recorder.start();
+
+        let frameToPlay = 0;
+        let frameStartTime = 0;
+        let lastTimestamp = 0;
+
+        function recordAnimationLoop(timestamp) {
+            if (frameStartTime === 0) {
+                frameStartTime = timestamp;
+                lastTimestamp = timestamp;
             }
 
-            switchFrame(originalFrameIndex);
+            const elapsed = timestamp - frameStartTime;
+            const progress = Math.min(1.0, elapsed / ANIMATION_SPEED);
 
-            gifshot.createGIF({
-                'images': frameImages,
-                'gifWidth': CANVAS_WIDTH * 0.4, // 320px
-                'gifHeight': CANVAS_HEIGHT * 0.4, // 240px
-                'interval': ANIMATION_SPEED / 1000,
-                'numFrames': appState.frames.length,
-                'quality': 20
-            }, (obj) => {
-                if (!obj.error) {
-                    const a = document.createElement('a');
-                    a.href = obj.image;
-                    a.download = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.gif`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                } else {
-                    console.error('GIF export error:', obj.error);
-                    alert('Could not create GIF. ' + obj.error);
+            // --- Draw the frame ---
+            const frameA = appState.frames[frameToPlay];
+            if (!frameA) {
+                recorder.stop();
+                return;
+            }
+
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            ctx.drawImage(appState.courtType === 'half' ? halfCourtImg : fullCourtImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            drawLines(frameA.lines); // Draw static lines
+
+            // Animate players and ball
+            frameA.players.forEach(p1 => {
+                let drawX = p1.x, drawY = p1.y, hasBall = p1.hasBall;
+                const moveLine = frameA.lines.find(l => l.startPlayerId === p1.id && (l.type === 'cut' || l.type === 'dribble' || l.type === 'move' || l.type === 'screen'));
+                const passLine = frameA.lines.find(l => l.startPlayerId === p1.id && l.type === 'pass');
+                const shootLine = frameA.lines.find(l => l.startPlayerId === p1.id && l.type === 'shoot');
+
+                if (moveLine) {
+                    const newPos = getPointAlongPath(moveLine.points, getPathLength(moveLine.points) * progress);
+                    drawX = newPos.x;
+                    drawY = newPos.y;
                 }
-
-                appState.isExporting = false;
-                exportGifBtn.disabled = false;
-                hideLoading();
+                if (passLine) {
+                    hasBall = false;
+                    const ballPos = getPointAlongPath(passLine.points, getPathLength(passLine.points) * progress);
+                    ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS / 2, 0, 2 * Math.PI); ctx.fillStyle = '#FF8C00'; ctx.fill();
+                    ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS + 5, 0, 2 * Math.PI); ctx.strokeStyle = BALL_HOLDER_COLOR; ctx.lineWidth = 3; ctx.stroke();
+                }
+                if (shootLine) {
+                    hasBall = false;
+                    const ballPos = getPointAlongPath(shootLine.points, getPathLength(shootLine.points) * progress);
+                    ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS / 2, 0, 2 * Math.PI); ctx.fillStyle = '#FF8C00'; ctx.fill();
+                    ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS + 5, 0, 2 * Math.PI); ctx.strokeStyle = BALL_HOLDER_COLOR; ctx.lineWidth = 3; ctx.stroke();
+                }
+                drawPlayerAt(p1, drawX, drawY, hasBall);
             });
-        }, 100);
+
+            // 4. Request the next frame
+            if (progress < 1.0) {
+                requestAnimationFrame(recordAnimationLoop);
+            } else {
+                // Frame animation is finished
+                frameToPlay++;
+                frameStartTime = 0;
+
+                // --- THIS IS THE FIX ---
+                if (frameToPlay >= appState.frames.length) {
+                    // This should not be hit, but as a safeguard
+                    recorder.stop();
+                } else if (frameToPlay === appState.frames.length - 1) {
+                    // We have just finished animating TO the last frame.
+                    // Now, we must draw the last frame statically and hold it.
+
+                    // 1. Get and draw the final static frame
+                    const lastFrame = appState.frames[frameToPlay];
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                    ctx.drawImage(appState.courtType === 'half' ? halfCourtImg : fullCourtImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                    drawLines(lastFrame.lines);
+                    drawPlayers(lastFrame.players);
+
+                    // 2. Wait for the animation duration, then stop
+                    setTimeout(() => {
+                        recorder.stop(); // Triggers 'onstop' to download
+                    }, 3000); // Hold for 2 seconds
+
+                } else {
+                    // We are in the middle, continue to the next animation
+                    requestAnimationFrame(recordAnimationLoop);
+                }
+                // --- END FIX ---
+            }
+        }
+
+        // Start the recording loop
+        requestAnimationFrame(recordAnimationLoop);
     });
 
     // --- 9. CANVAS MOUSE LISTENERS (Waypoint Logic) ---
@@ -1029,7 +1118,6 @@ document.addEventListener('DOMContentLoaded', () => {
                          }
                      }
                  }
-            // REMOVED: 'shoot' logic from here
             }
         }
     });
@@ -1054,7 +1142,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     canvas.classList.add('tool-select:active');
                     e.preventDefault();
                 }
-            // UPDATED: "shoot" is now part of the normal line drawing
             } else if (appState.activeTool !== 'player' && appState.activeTool !== 'assign-ball' && appState.activeTool !== 'delete') {
                 // It's an action tool (cut, pass, shoot, etc.)
                 if (!appState.isDrawingLine) {
