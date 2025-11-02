@@ -20,7 +20,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const frameList = document.getElementById('frame-list');
     const frameNotes = document.getElementById('frame-notes');
     const toolbox = document.getElementById('drawing-toolbox');
-    const playerToolIcons = document.querySelectorAll('.player-tool-icon'); // NEW
+    const playerToolIcons = document.querySelectorAll('.player-tool-icon');
+
+    // NEW: Loading Modal Elements
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
 
     // --- 2. SETUP CANVAS & IMAGES ---
     const CANVAS_WIDTH = 800;
@@ -73,7 +77,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 4. MAIN DRAWING & HELPER FUNCTIONS ---
 
-    // NEW: Draws a single player icon onto a toolbox canvas
+    // NEW: Helper functions for the loading modal
+    function showLoading(message) {
+        loadingText.textContent = message;
+        loadingOverlay.classList.remove('hidden');
+    }
+
+    function hideLoading() {
+        loadingOverlay.classList.add('hidden');
+    }
+
     function drawToolboxIcon(iconCanvas) {
         const label = iconCanvas.dataset.player;
         const isOffense = !label.startsWith('X');
@@ -101,7 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
         toolCtx.fillText(label, center, center);
     }
 
-    // NEW: Runs once on load to draw all toolbox icons
     function initializeToolboxIcons() {
         playerToolIcons.forEach(icon => {
             // Set canvas drawing size
@@ -709,87 +721,114 @@ document.addEventListener('DOMContentLoaded', () => {
         e.target.value = null; // Reset for re-loading same file
     });
 
+    // UPDATED: PDF Export with loading modal
     exportPdfBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
 
         appState.isExporting = true;
-        exportPdfBtn.textContent = 'Generating...';
         exportPdfBtn.disabled = true;
+        showLoading('Generating PDF...'); // Show modal
 
+        // Wrap in setTimeout to allow modal to render
         setTimeout(() => {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('landscape');
+            const doc = new jsPDF('portrait', 'mm', 'a4');
             const originalFrameIndex = appState.currentFrameIndex;
             const playName = playNameInput.value || 'Untitled Play';
 
-            appState.frames.forEach((frame, index) => {
-                switchFrame(index); // This calls draw()
+            const margin = 10;
+            const pageW = 210;
+            const pageH = 297;
+            const contentW = pageW - (margin * 2);
+            const imgColW = 80;
+            const gutter = 10;
+            const notesColW = contentW - imgColW - gutter;
+            const imgColH = (imgColW / 4) * 3;
+            const frameRowH = (pageH - (margin * 2)) / 3;
 
-                const imgData = canvas.toDataURL('image/png');
+            for (let i = 0; i < appState.frames.length; i++) {
+                const frame = appState.frames[i];
+                const frameIndexInPage = i % 3;
 
-                if (index > 0) {
+                if (i > 0 && frameIndexInPage === 0) {
                     doc.addPage();
                 }
 
-                doc.addImage(imgData, 'PNG', 10, 10, 277, 190);
-                doc.setFontSize(12);
-                doc.text(`Frame ${index + 1} Notes:`, 10, 205);
+                switchFrame(i);
+                const imgData = canvas.toDataURL('image/png');
+
+                const yPos = margin + (frameIndexInPage * frameRowH) + 5;
+                const imgX = margin;
+                doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH);
+
+                const notesX = margin + imgColW + gutter;
+                doc.setFontSize(14);
+                doc.setFont(undefined, 'bold');
+                doc.text(`Frame ${i + 1}`, notesX, yPos + 5);
+
                 doc.setFontSize(10);
-                const notesLines = doc.splitTextToSize(frame.notes, 277);
-                doc.text(notesLines, 10, 210);
-            });
+                doc.setFont(undefined, 'normal');
+                const notesLines = doc.splitTextToSize(frame.notes, notesColW);
+                doc.text(notesLines, notesX, yPos + 12);
+            }
 
             doc.save(`${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`);
 
             switchFrame(originalFrameIndex);
             appState.isExporting = false;
-            exportPdfBtn.textContent = '📄 PDF';
             exportPdfBtn.disabled = false;
-
+            hideLoading(); // Hide modal
         }, 100);
     });
 
+    // UPDATED: GIF Export with loading modal AND new quality settings
     exportGifBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
 
         appState.isExporting = true;
-        exportGifBtn.textContent = 'Generating...';
         exportGifBtn.disabled = true;
+        showLoading('Generating GIF...'); // Show modal
 
-        const originalFrameIndex = appState.currentFrameIndex;
-        const playName = playNameInput.value || 'Untitled Play';
+        // Wrap in setTimeout
+        setTimeout(() => {
+            const originalFrameIndex = appState.currentFrameIndex;
+            const playName = playNameInput.value || 'Untitled Play';
 
-        const frameImages = [];
-        for (let i = 0; i < appState.frames.length; i++) {
-            switchFrame(i); // This calls draw()
-            frameImages.push(canvas.toDataURL('image/png'));
-        }
-
-        switchFrame(originalFrameIndex);
-
-        gifshot.createGIF({
-            'images': frameImages,
-            'gifWidth': CANVAS_WIDTH / 2,
-            'gifHeight': CANVAS_HEIGHT / 2,
-            'interval': ANIMATION_SPEED / 1000, // seconds
-            'numFrames': appState.frames.length
-        }, (obj) => {
-            if (!obj.error) {
-                const a = document.createElement('a');
-                a.href = obj.image;
-                a.download = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.gif`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            } else {
-                console.error('GIF export error:', obj.error);
-                alert('Could not create GIF. ' + obj.error);
+            const frameImages = [];
+            for (let i = 0; i < appState.frames.length; i++) {
+                switchFrame(i);
+                frameImages.push(canvas.toDataURL('image/png'));
             }
 
-            appState.isExporting = false;
-            exportGifBtn.textContent = '📸 GIF';
-            exportGifBtn.disabled = false;
-        });
+            switchFrame(originalFrameIndex);
+
+            // --- THIS IS THE FIX ---
+            gifshot.createGIF({
+                'images': frameImages,
+                'gifWidth': CANVAS_WIDTH * 0.4, // 320px (Smaller dimensions)
+                'gifHeight': CANVAS_HEIGHT * 0.4, // 240px
+                'interval': ANIMATION_SPEED / 1000,
+                'numFrames': appState.frames.length,
+                'quality': 20 // 10 is best, 20 is worse but much faster
+            }, (obj) => {
+            // --- END FIX ---
+                if (!obj.error) {
+                    const a = document.createElement('a');
+                    a.href = obj.image;
+                    a.download = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.gif`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                } else {
+                    console.error('GIF export error:', obj.error);
+                    alert('Could not create GIF. ' + obj.error);
+                }
+
+                appState.isExporting = false;
+                exportGifBtn.disabled = false;
+                hideLoading(); // Hide modal
+            });
+        }, 100);
     });
 
     // --- 8. CANVAS MOUSE LISTENERS (Waypoint Logic) ---
