@@ -3,13 +3,424 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Basketball Play Maker</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Basketball Playmaker Pro</title>
+    <style>
+        /* ===== RESET & BASE ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* ===== APP CONTAINER ===== */
+        #app-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        /* ===== TOP TOOLBAR ===== */
+        #top-toolbar {
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        #top-toolbar label {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        #top-toolbar input[type="text"],
+        #top-toolbar select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: none;
+            font-size: 14px;
+            background: rgba(255,255,255,0.95);
+            transition: all 0.2s;
+        }
+
+        #top-toolbar input[type="text"]:focus,
+        #top-toolbar select:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.4);
+        }
+
+        #top-toolbar button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: white;
+        }
+
+        #top-toolbar button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        #top-toolbar button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        #top-toolbar button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Button Colors */
+        .btn-primary { background-color: #3498db; }
+        .btn-primary:hover:not(:disabled) { background-color: #2980b9; }
+        
+        .btn-success { background-color: #27ae60; }
+        .btn-success:hover:not(:disabled) { background-color: #229954; }
+        
+        .btn-info { background-color: #16a085; }
+        .btn-info:hover:not(:disabled) { background-color: #138d75; }
+        
+        .btn-danger { background-color: #e74c3c; }
+        .btn-danger:hover:not(:disabled) { background-color: #c0392b; }
+        
+        .btn-warning { background-color: #f39c12; }
+        .btn-warning:hover:not(:disabled) { background-color: #d68910; }
+
+        /* ===== INSTRUCTION BAR ===== */
+        #instruction-bar {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #fff3cd 0%, #ffe8a1 100%);
+            border-bottom: 2px solid #ffc107;
+            text-align: center;
+            font-size: 14px;
+            color: #856404;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        #instruction-bar::before {
+            content: "💡";
+            font-size: 18px;
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        #main-content {
+            display: flex;
+            height: 700px;
+        }
+
+        /* ===== FRAME PANEL ===== */
+        #frame-panel {
+            width: 240px;
+            background: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        #frame-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 8px;
+        }
+
+        #frame-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 6px;
+            padding: 8px;
+            min-height: 200px;
+        }
+
+        .frame-thumbnail {
+            padding: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+            background: white;
+            border: 2px solid #e0e0e0;
+        }
+
+        .frame-thumbnail:hover:not(.active) {
+            border-color: #3498db;
+            transform: translateX(2px);
+        }
+
+        .frame-thumbnail.active {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            border-color: #2980b9;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .frame-thumbnail canvas {
+            width: 100%;
+            border-radius: 4px;
+            background: white;
+            display: block;
+        }
+
+        .frame-thumbnail-label {
+            text-align: center;
+            margin-top: 5px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .frame-thumbnail.active .frame-thumbnail-label {
+            color: white;
+        }
+
+        .frame-controls {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+
+        .frame-controls button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: white;
+        }
+
+        #frame-notes {
+            width: 100%;
+            height: 120px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: inherit;
+            font-size: 13px;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+
+        #frame-notes:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        /* ===== CANVAS CONTAINER ===== */
+        #court-container {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #ecf0f1;
+            padding: 20px;
+            position: relative;
+        }
+
+        #play-canvas {
+            border: 3px solid #34495e;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            transition: all 0.3s;
+            cursor: crosshair;
+        }
+
+        #play-canvas.drag-over {
+            border: 3px dashed #3498db;
+            box-shadow: inset 0 0 30px rgba(52, 152, 219, 0.2);
+            transform: scale(1.01);
+        }
+
+        /* ===== TOOLBOX ===== */
+        #drawing-toolbox {
+            width: 200px;
+            background: #f8f9fa;
+            border-left: 1px solid #dee2e6;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        #drawing-toolbox h3 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 8px;
+        }
+
+        #drawing-toolbox h4 {
+            margin: 15px 0 8px 0;
+            font-size: 14px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tool-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 6px;
+            font-size: 14px;
+            text-align: left;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .tool-btn:hover:not(.active) {
+            border-color: #3498db;
+            transform: translateX(2px);
+        }
+
+        .tool-btn.active {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border-color: #2980b9;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .tool-btn.dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+
+        .tool-btn[data-tool="delete"] {
+            background: #ffe6e6;
+            color: #c0392b;
+            border-color: #e74c3c;
+        }
+
+        .tool-btn[data-tool="delete"].active {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+        }
+
+        /* ===== TOAST NOTIFICATIONS ===== */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            opacity: 0;
+            transform: translateX(400px);
+            transition: all 0.3s ease;
+            z-index: 10000;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            min-width: 250px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .toast-success { background: linear-gradient(135deg, #27ae60 0%, #229954 100%); }
+        .toast-warning { background: linear-gradient(135deg, #f39c12 0%, #d68910 100%); }
+        .toast-error { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); }
+        .toast-info { background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); }
+
+        .toast::before {
+            font-size: 20px;
+        }
+
+        .toast-success::before { content: "✓"; }
+        .toast-warning::before { content: "⚠"; }
+        .toast-error::before { content: "✕"; }
+        .toast-info::before { content: "ℹ"; }
+
+        /* ===== LOADING INDICATOR ===== */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ===== SCROLLBAR STYLING ===== */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #95a5a6;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #7f8c8d;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1200px) {
+            #frame-panel, #drawing-toolbox {
+                width: 180px;
+            }
+        }
+    </style>
 </head>
 <body>
-
     <div id="app-container">
-
+        <!-- Top Toolbar -->
         <div id="top-toolbar">
             <label for="play-name">Play Name:</label>
             <input type="text" id="play-name" placeholder="Untitled Play">
@@ -19,40 +430,47 @@
                 <option value="full">Full Court</option>
             </select>
             
-            <button id="new-play">New Play</button>
-            <button id="clear-frame">Clear Frame</button>
-            <button id="animate-play">Animate</button>
-            
-            <button id="save-play">Save to File</button>
-            <button id="load-play">Load from File</button>
+            <button id="new-play" class="btn-warning">🆕 New Play</button>
+            <button id="undo-btn" class="btn-primary" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
+            <button id="redo-btn" class="btn-primary" title="Redo (Ctrl+Y)" disabled>↷ Redo</button>
+            <button id="clear-frame" class="btn-danger">🗑️ Clear Frame</button>
+            <button id="animate-play" class="btn-primary">▶️ Animate</button>
+            <button id="save-play" class="btn-success">💾 Save</button>
+            <button id="load-play" class="btn-info">📂 Load</button>
             <input type="file" id="load-file-input" accept=".json" style="display: none;">
-            
-            <button id="export-gif">Export as GIF</button>
-            <button id="export-pdf">Export as PDF</button>
+            <button id="export-gif" class="btn-warning">📸 GIF</button>
+            <button id="export-pdf" class="btn-warning">📄 PDF</button>
         </div>
 
-        <div id="main-content">
+        <!-- Instruction Bar -->
+        <div id="instruction-bar">
+            <span id="instruction-text">Drag players onto the court to begin</span>
+        </div>
 
+        <!-- Main Content -->
+        <div id="main-content">
+            <!-- Frame Panel -->
             <div id="frame-panel">
-                <h3>Frames</h3>
-                <div id="frame-list">
-                    <div class="frame-thumbnail active" data-frame-id="1">Frame 1</div>
+                <h3>📋 Frames</h3>
+                <div id="frame-list"></div>
+                <div class="frame-controls">
+                    <button id="add-frame" class="btn-success">+ Add</button>
+                    <button id="delete-frame" class="btn-danger">- Delete</button>
                 </div>
-                <button id="add-frame">+ New Frame</button>
-                <button id="delete-frame">- Delete Frame</button> <hr>
-                
-                <h3>Notes</h3>
-                <textarea id="frame-notes" placeholder="Add notes for the selected frame..."></textarea>
+                <h3>📝 Notes</h3>
+                <textarea id="frame-notes" placeholder="Add notes for this frame..."></textarea>
             </div>
 
+            <!-- Canvas -->
             <div id="court-container">
                 <canvas id="play-canvas"></canvas>
             </div>
 
+            <!-- Toolbox -->
             <div id="drawing-toolbox">
-                <h3>Tools</h3>
-                <button class="tool-btn active" data-tool="select">Move Player</button>
-                <button class="tool-btn" data-tool="delete">Delete Item</button>
+                <h3>🛠️ Tools</h3>
+                <button class="tool-btn active" data-tool="select">🖱️ Move Player</button>
+                <button class="tool-btn" data-tool="delete">🗑️ Delete Item</button>
 
                 <h4>Offense</h4>
                 <button class="tool-btn" data-tool="player" data-player="1" draggable="true">1</button>
@@ -69,17 +487,613 @@
                 <button class="tool-btn" data-tool="player" data-player="X5" draggable="true">X5</button>
 
                 <h4>Actions</h4>
-                <button class="tool-btn" data-tool="assign-ball">Assign Ball</button>
-                <button class="tool-btn" data-tool="cut">Cut</button>
-                <button class="tool-btn" data-tool="dribble">Dribble</button>
-                <button class="tool-btn" data-tool="pass">Pass</button>
-                <button class="tool-btn" data-tool="screen">Screen</button>
-                <button class="tool-btn" data-tool="shoot">Shoot</button> <button class="tool-btn" data-tool="move">Move (Defense)</button>
+                <button class="tool-btn" data-tool="assign-ball">🏀 Assign Ball</button>
+                <button class="tool-btn" data-tool="cut">✂️ Cut</button>
+                <button class="tool-btn" data-tool="dribble">⚡ Dribble</button>
+                <button class="tool-btn" data-tool="pass">🎯 Pass</button>
+                <button class="tool-btn" data-tool="screen">🛡️ Screen</button>
+                <button class="tool-btn" data-tool="shoot">🏹 Shoot</button>
+                <button class="tool-btn" data-tool="move">👟 Move (Defense)</button>
             </div>
+        </div>
+    </div>
 
-        </div> </div> <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.4.1/gifshot.min.js"></script>
-    
-    <script src="app.js"></script>
-</body>
-</html>
+
+    <script>
+        // ===== CONSTANTS =====
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 600;
+        const PLAYER_RADIUS = 15;
+        const OFFENSE_COLOR = '#007bff';
+        const DEFENSE_COLOR = '#dc3545';
+        const BALL_HOLDER_COLOR = '#000000';
+        const LINE_COLOR = '#343a40';
+        const ANIMATION_SPEED = 1000;
+        const LINE_HIT_THRESHOLD = 10;
+        const MAX_HISTORY = 50;
+        const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+        // ===== DOM ELEMENTS =====
+        const canvas = document.getElementById('play-canvas');
+        const ctx = canvas.getContext('2d');
+        const playNameInput = document.getElementById('play-name');
+        const courtToggle = document.getElementById('court-toggle');
+        const clearFrameBtn = document.getElementById('clear-frame');
+        const saveBtn = document.getElementById('save-play');
+        const loadBtn = document.getElementById('load-play');
+        const loadFileInput = document.getElementById('load-file-input');
+        const animateBtn = document.getElementById('animate-play');
+        const exportGifBtn = document.getElementById('export-gif');
+        const exportPdfBtn = document.getElementById('export-pdf');
+        const newPlayBtn = document.getElementById('new-play');
+        const addFrameBtn = document.getElementById('add-frame');
+        const deleteFrameBtn = document.getElementById('delete-frame');
+        const frameList = document.getElementById('frame-list');
+        const frameNotes = document.getElementById('frame-notes');
+        const toolbox = document.getElementById('drawing-toolbox');
+        const playerBtns = document.querySelectorAll('.tool-btn[data-tool="player"]');
+        const instructionText = document.getElementById('instruction-text');
+        const undoBtn = document.getElementById('undo-btn');
+        const redoBtn = document.getElementById('redo-btn');
+
+        // ===== CANVAS SETUP =====
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        const halfCourtImg = new Image();
+        halfCourtImg.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2Q0YTU3MyIvPjxyZWN0IHg9IjUwIiB5PSI1MCIgd2lkdGg9IjcwMCIgaGVpZ2h0PSI1MDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzIi8+PGxpbmUgeDE9IjQwMCIgeTE9IjUwIiB4Mj0iNDAwIiB5Mj0iNTUwIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMyIvPjxjaXJjbGUgY3g9IjQwMCIgY3k9IjMwMCIgcj0iODAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzIi8+PHJlY3QgeD0iNTAiIHk9IjIyMCIgd2lkdGg9IjE1MCIgaGVpZ2h0PSIxNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzIi8+PHJlY3QgeD0iNjAwIiB5PSIyMjAiIHdpZHRoPSIxNTAiIGhlaWdodD0iMTYwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMyIvPjxwYXRoIGQ9Ik0gNTAgMzAwIEEgNjAgNjAgMCAwIDAgMjAwIDMwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjMiLz48cGF0aCBkPSJNIDc1MCAzMDAgQSA2MCA2MCAwIDAgMSA2MDAgMzAwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMyIvPjwvc3ZnPg==';
+
+        const fullCourtImg = new Image();
+        fullCourtImg.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2Q0YTU3MyIvPjxyZWN0IHg9IjUwIiB5PSI1MCIgd2lkdGg9IjcwMCIgaGVpZ2h0PSI1MDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzIi8+PGxpbmUgeDE9IjQwMCIgeTE9IjUwIiB4Mj0iNDAwIiB5Mj0iNTUwIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMyIvPjxjaXJjbGUgY3g9IjQwMCIgY3k9IjMwMCIgcj0iODAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzIi8+PHJlY3QgeD0iNTAiIHk9IjIyMCIgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzIi8+PHJlY3QgeD0iNjUwIiB5PSIyMjAiIHdpZHRoPSIxMDAiIGhlaWdodD0iMTYwIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMyIvPjwvc3ZnPg==';
+
+        // ===== CANVAS CACHE =====
+        const canvasCache = {
+            court: document.createElement('canvas')
+        };
+        canvasCache.court.width = CANVAS_WIDTH;
+        canvasCache.court.height = CANVAS_HEIGHT;
+
+        // ===== APPLICATION STATE =====
+        const createNewFrame = (id) => ({
+            id: id,
+            notes: "",
+            players: [],
+            lines: []
+        });
+
+        const createInitialState = () => ({
+            courtType: 'half',
+            activeTool: 'select',
+            frames: [createNewFrame(1)],
+            currentFrameIndex: 0,
+            nextFrameId: 2,
+            isDragging: false,
+            draggingPlayer: null,
+            dragOffsetX: 0,
+            dragOffsetY: 0,
+            isDrawingLine: false,
+            previewLine: null,
+            isAnimating: false,
+            isExporting: false,
+            animationFrameId: null,
+            animationStartTime: 0,
+            currentFramePlaying: 0
+        });
+
+        let appState = createInitialState();
+
+        // ===== UNDO/REDO SYSTEM =====
+        const commandHistory = {
+            past: [],
+            future: []
+        };
+
+        class Command {
+            execute() {}
+            undo() {}
+        }
+
+        class AddPlayerCommand extends Command {
+            constructor(frame, player) {
+                super();
+                this.frame = frame;
+                this.player = player;
+            }
+            execute() {
+                this.frame.players.push(this.player);
+            }
+            undo() {
+                const index = this.frame.players.indexOf(this.player);
+                if (index > -1) this.frame.players.splice(index, 1);
+            }
+        }
+
+        class DeletePlayerCommand extends Command {
+            constructor(frame, player) {
+                super();
+                this.frame = frame;
+                this.player = player;
+                this.index = frame.players.indexOf(player);
+            }
+            execute() {
+                const index = this.frame.players.indexOf(this.player);
+                if (index > -1) this.frame.players.splice(index, 1);
+            }
+            undo() {
+                this.frame.players.splice(this.index, 0, this.player);
+            }
+        }
+
+        class AddLineCommand extends Command {
+            constructor(frame, line) {
+                super();
+                this.frame = frame;
+                this.line = line;
+            }
+            execute() {
+                this.frame.lines.push(this.line);
+            }
+            undo() {
+                const index = this.frame.lines.indexOf(this.line);
+                if (index > -1) this.frame.lines.splice(index, 1);
+            }
+        }
+
+        class DeleteLineCommand extends Command {
+            constructor(frame, line) {
+                super();
+                this.frame = frame;
+                this.line = line;
+                this.index = frame.lines.indexOf(line);
+            }
+            execute() {
+                const index = this.frame.lines.indexOf(this.line);
+                if (index > -1) this.frame.lines.splice(index, 1);
+            }
+            undo() {
+                this.frame.lines.splice(this.index, 0, this.line);
+            }
+        }
+
+        function executeCommand(command) {
+            command.execute();
+            commandHistory.past.push(command);
+            commandHistory.future = [];
+            if (commandHistory.past.length > MAX_HISTORY) {
+                commandHistory.past.shift();
+            }
+            updateUndoRedoButtons();
+            draw();
+        }
+
+        function undo() {
+            if (commandHistory.past.length === 0) return;
+            const command = commandHistory.past.pop();
+            command.undo();
+            commandHistory.future.push(command);
+            updateUndoRedoButtons();
+            draw();
+        }
+
+        function redo() {
+            if (commandHistory.future.length === 0) return;
+            const command = commandHistory.future.pop();
+            command.execute();
+            commandHistory.past.push(command);
+            updateUndoRedoButtons();
+            draw();
+        }
+
+        function updateUndoRedoButtons() {
+            undoBtn.disabled = commandHistory.past.length === 0;
+            redoBtn.disabled = commandHistory.future.length === 0;
+        }
+
+        function clearHistory() {
+            commandHistory.past = [];
+            commandHistory.future = [];
+            updateUndoRedoButtons();
+        }
+
+        // ===== UTILITY FUNCTIONS =====
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    if (toast.parentNode) document.body.removeChild(toast);
+                }, 300);
+            }, 3000);
+        }
+
+        function sanitizeFilename(input, maxLength = 50) {
+            if (!input || typeof input !== 'string') {
+                return 'untitled_play';
+            }
+            let sanitized = input
+                .replace(/[\/\\:*?"<>|]/g, '')
+                .replace(/\.\./g, '')
+                .replace(/[\x00-\x1f\x80-\x9f]/g, '')
+                .replace(/^\.+/, '')
+                .trim();
+            sanitized = sanitized.substring(0, maxLength) || 'untitled_play';
+            return sanitized.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        }
+
+        function validatePlayData(data) {
+            if (!data || typeof data !== 'object') {
+                throw new Error('Invalid play file structure');
+            }
+            if (!Array.isArray(data.frames) || data.frames.length === 0) {
+                throw new Error('Play file must contain at least one frame');
+            }
+            for (const frame of data.frames) {
+                if (!frame.id || !Array.isArray(frame.players) || !Array.isArray(frame.lines)) {
+                    throw new Error('Frame structure is invalid');
+                }
+            }
+            return true;
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function updateInstructions() {
+            let instruction = '';
+            if (appState.activeTool === 'select') {
+                instruction = 'Click and drag players to move them';
+            } else if (['cut', 'dribble', 'pass', 'screen', 'shoot', 'move'].includes(appState.activeTool)) {
+                if (!appState.isDrawingLine) {
+                    instruction = 'Click on a player to start drawing | Right-click to add waypoints';
+                } else {
+                    instruction = 'Left-click to finish | Right-click to add waypoint';
+                }
+            } else if (appState.activeTool === 'assign-ball') {
+                instruction = 'Click on an offensive player to assign the ball';
+            } else if (appState.activeTool === 'delete') {
+                instruction = 'Click on a player or line to delete it';
+            }
+            instructionText.textContent = instruction;
+        }
+
+        // ===== GEOMETRY FUNCTIONS =====
+        function distanceToSegment(px, py, x1, y1, x2, y2) {
+            const A = px - x1;
+            const B = py - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            let param = -1;
+            if (lenSq !== 0) param = dot / lenSq;
+            let xx, yy;
+            if (param < 0) {
+                xx = x1;
+                yy = y1;
+            } else if (param > 1) {
+                xx = x2;
+                yy = y2;
+            } else {
+                xx = x1 + param * C;
+                yy = y1 + param * D;
+            }
+            const dx = px - xx;
+            const dy = py - yy;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function getLineAtCoord(x, y, lines) {
+            for (let line of lines) {
+                for (let i = 0; i < line.points.length - 1; i++) {
+                    const start = line.points[i];
+                    const end = line.points[i + 1];
+                    const dist = distanceToSegment(x, y, start.x, start.y, end.x, end.y);
+                    if (dist < LINE_HIT_THRESHOLD) {
+                        return line;
+                    }
+                }
+            }
+            return null;
+        }
+
+        function getPlayerAtCoord(x, y) {
+            const currentFrame = appState.frames[appState.currentFrameIndex];
+            if (!currentFrame) return null;
+            for (let i = currentFrame.players.length - 1; i >= 0; i--) {
+                const player = currentFrame.players[i];
+                const distance = Math.sqrt((x - player.x) ** 2 + (y - player.y) ** 2);
+                if (distance < player.radius) {
+                    return player;
+                }
+            }
+            return null;
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function getPositionAlongPath(path, progress) {
+            const numSegments = path.length - 1;
+            if (numSegments <= 0) return path[0] || { x: 0, y: 0 };
+            const segmentProgress = progress * numSegments;
+            let segmentIndex = Math.floor(segmentProgress);
+            if (segmentIndex >= numSegments) segmentIndex = numSegments - 1;
+            const progressInSegment = (progress * numSegments) - segmentIndex;
+            const segmentStart = path[segmentIndex];
+            const segmentEnd = path[segmentIndex + 1];
+            const x = segmentStart.x + (segmentEnd.x - segmentStart.x) * progressInSegment;
+            const y = segmentStart.y + (segmentEnd.y - segmentStart.y) * progressInSegment;
+            return { x, y };
+        }
+
+        // ===== RENDERING FUNCTIONS =====
+        function cacheCourtImage() {
+            const cacheCtx = canvasCache.court.getContext('2d');
+            cacheCtx.fillStyle = 'white';
+            cacheCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            const img = appState.courtType === 'half' ? halfCourtImg : fullCourtImg;
+            cacheCtx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        }
+
+        function draw() {
+            ctx.drawImage(canvasCache.court, 0, 0);
+            const currentFrame = appState.frames[appState.currentFrameIndex];
+            if (!currentFrame) return;
+            drawLines(currentFrame.lines);
+            if (appState.previewLine) {
+                drawLines([appState.previewLine]);
+            }
+            drawPlayers(currentFrame.players);
+        }
+
+        function drawPlayerAt(player, x, y, hasBall) {
+            ctx.beginPath();
+            ctx.arc(x, y, player.radius, 0, 2 * Math.PI);
+            ctx.fillStyle = player.isOffense ? OFFENSE_COLOR : DEFENSE_COLOR;
+            ctx.fill();
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(player.label, x, y);
+            if (hasBall) {
+                ctx.beginPath();
+                ctx.arc(x, y, player.radius + 5, 0, 2 * Math.PI);
+                ctx.strokeStyle = BALL_HOLDER_COLOR;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+        }
+
+        function drawPlayers(players) {
+            players.forEach(player => {
+                drawPlayerAt(player, player.x, player.y, player.hasBall);
+            });
+        }
+
+        function drawLines(lines) {
+            lines.forEach(line => {
+                const { type, points } = line;
+                if (points.length < 2) return;
+                ctx.strokeStyle = LINE_COLOR;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                for (let i = 0; i < points.length - 1; i++) {
+                    const start = points[i];
+                    const end = points[i + 1];
+                    switch (type) {
+                        case 'pass':
+                            ctx.setLineDash([5, 10]);
+                            break;
+                        case 'dribble':
+                            drawDribbleLine(start, end);
+                            continue;
+                        default:
+                            ctx.setLineDash([]);
+                            break;
+                    }
+                    ctx.beginPath();
+                    ctx.moveTo(start.x, start.y);
+                    ctx.lineTo(end.x, end.y);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    if (i === points.length - 2) {
+                        const angle = Math.atan2(end.y - start.y, end.x - start.x);
+                        switch (type) {
+                            case 'cut':
+                            case 'move':
+                            case 'shoot':
+                            case 'pass':
+                                drawArrowhead(end, angle);
+                                break;
+                            case 'screen':
+                                drawScreenEnd(end, angle);
+                                break;
+                        }
+                        if (type === 'shoot') {
+                            ctx.save();
+                            ctx.translate(Math.sin(angle) * 4, -Math.cos(angle) * 4);
+                            ctx.beginPath();
+                            ctx.moveTo(start.x, start.y);
+                            ctx.lineTo(end.x, end.y);
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+                    }
+                }
+            });
+            ctx.setLineDash([]);
+        }
+
+        function drawArrowhead(end, angle) {
+            const arrowLength = 12;
+            ctx.beginPath();
+            ctx.moveTo(end.x, end.y);
+            ctx.lineTo(end.x - arrowLength * Math.cos(angle - Math.PI / 6), end.y - arrowLength * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(end.x, end.y);
+            ctx.lineTo(end.x - arrowLength * Math.cos(angle + Math.PI / 6), end.y - arrowLength * Math.sin(angle + Math.PI / 6));
+            ctx.stroke();
+        }
+
+        function drawScreenEnd(end, angle) {
+            const screenWidth = 12;
+            ctx.beginPath();
+            const x1 = end.x - screenWidth * Math.sin(angle);
+            const y1 = end.y + screenWidth * Math.cos(angle);
+            const x2 = end.x + screenWidth * Math.sin(angle);
+            const y2 = end.y - screenWidth * Math.cos(angle);
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        function drawDribbleLine(start, end) {
+            let dx = end.x - start.x;
+            let dy = end.y - start.y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist === 0) return;
+            let numZigs = Math.floor(dist / 15);
+            let amplitude = 8;
+            ctx.beginPath();
+            ctx.moveTo(start.x, start.y);
+            for (let i = 1; i <= numZigs; i++) {
+                let t = i / numZigs;
+                let x = start.x + dx * t;
+                let y = start.y + dy * t;
+                let side = (i % 2 === 0) ? 1 : -1;
+                let offsetX = (-dy / dist) * amplitude * side;
+                let offsetY = (dx / dist) * amplitude * side;
+                ctx.lineTo(x + offsetX, y + offsetY);
+            }
+            ctx.lineTo(end.x, end.y);
+            ctx.stroke();
+            drawArrowhead(end, Math.atan2(dy, dx));
+        }
+
+        function renderFrameList() {
+            frameList.innerHTML = '';
+            appState.frames.forEach((frame, index) => {
+                const frameEl = document.createElement('div');
+                frameEl.className = 'frame-thumbnail';
+                frameEl.dataset.frameId = frame.id;
+                
+                const thumbCanvas = document.createElement('canvas');
+                thumbCanvas.width = 200;
+                thumbCanvas.height = 150;
+                const thumbCtx = thumbCanvas.getContext('2d');
+                
+                thumbCtx.fillStyle = 'white';
+                thumbCtx.fillRect(0, 0, 200, 150);
+                const img = appState.courtType === 'half' ? halfCourtImg : fullCourtImg;
+                thumbCtx.drawImage(img, 0, 0, 200, 150);
+                
+                frame.players.forEach(player => {
+                    const x = (player.x / CANVAS_WIDTH) * 200;
+                    const y = (player.y / CANVAS_HEIGHT) * 150;
+                    const radius = (player.radius / CANVAS_WIDTH) * 200;
+                    thumbCtx.beginPath();
+                    thumbCtx.arc(x, y, radius, 0, 2 * Math.PI);
+                    thumbCtx.fillStyle = player.isOffense ? OFFENSE_COLOR : DEFENSE_COLOR;
+                    thumbCtx.fill();
+                    thumbCtx.strokeStyle = '#000';
+                    thumbCtx.lineWidth = 1;
+                    thumbCtx.stroke();
+                });
+                
+                frameEl.appendChild(thumbCanvas);
+                const label = document.createElement('div');
+                label.className = 'frame-thumbnail-label';
+                label.textContent = `Frame ${index + 1}`;
+                frameEl.appendChild(label);
+                
+                if (index === appState.currentFrameIndex && !appState.isAnimating) {
+                    frameEl.classList.add('active');
+                }
+                if (index === appState.currentFramePlaying && appState.isAnimating) {
+                    frameEl.classList.add('active');
+                }
+                
+                frameList.appendChild(frameEl);
+            });
+        }
+
+        // ===== FRAME MANAGEMENT =====
+        function switchFrame(newFrameIndex) {
+            if (newFrameIndex < 0 || newFrameIndex >= appState.frames.length) {
+                newFrameIndex = Math.max(0, Math.min(appState.frames.length - 1, newFrameIndex));
+            }
+            appState.currentFrameIndex = newFrameIndex;
+            if (appState.frames.length > 0) {
+                renderFrameList();
+                draw();
+                frameNotes.value = appState.frames[newFrameIndex].notes || '';
+            }
+        }
+
+        function handleNewPlay(confirmFirst = true) {
+            if (confirmFirst && !confirm('Are you sure you want to start a new play? All unsaved progress will be lost.')) {
+                return;
+            }
+            if (appState.isAnimating) {
+                cancelAnimationFrame(appState.animationFrameId);
+            }
+            appState = createInitialState();
+            playNameInput.value = '';
+            courtToggle.value = 'half';
+            clearHistory();
+            cacheCourtImage();
+            renderFrameList();
+            switchFrame(0);
+            showToast('New play created', 'success');
+        }
+
+        // ===== ANIMATION =====
+        function animatePlay(timestamp) {
+            if (appState.animationStartTime === 0) {
+                appState.animationStartTime = timestamp;
+            }
+            const elapsed = timestamp - appState.animationStartTime;
+            const progress = Math.min(1.0, elapsed / ANIMATION_SPEED);
+            const frameA = appState.frames[appState.currentFramePlaying];
+            if (!frameA) {
+                stopAnimation();
+                return;
+            }
+            
+            ctx.drawImage(canvasCache.court, 0, 0);
+            drawLines(frameA.lines);
+            const passLine = frameA.lines.find(l => l.type === 'pass');
+            
+            frameA.players.forEach(p1 => {
+                let drawX = p1.x;
+                let drawY = p1.y;
+                let hasBall = p1.hasBall;
+                const moveLine = frameA.lines.find(l =>
+                    (l.type === 'cut' || l.type === 'move' || l.type === 'dribble' || l.type === 'shoot' || l.type === 'screen') &&
+                    l.points[0].x === p1.x && l.points[0].y === p1.y
+                );
