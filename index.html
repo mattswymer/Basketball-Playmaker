@@ -5,19 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Basketball Playmaker Pro</title>
 
-  <!-- External stylesheet -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Externals libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.4.1/gifshot.min.js" crossorigin="anonymous"></script>
 
-  <!-- App logic -->
   <script src="app.js" defer></script>
 </head>
 <body>
   <div id="app-container">
-    <!-- Top Toolbar -->
     <div id="top-toolbar">
       <label for="play-name">Play Name:</label>
       <input type="text" id="play-name" placeholder="Untitled Play" />
@@ -39,14 +35,11 @@
       <button id="export-pdf" class="btn-warning">📄 PDF</button>
     </div>
 
-    <!-- Instruction Bar -->
     <div id="instruction-bar">
-      <span id="instruction-text">Drag players onto the court to begin</span>
+      <span id="instruction-text">Select a tool to begin</span>
     </div>
 
-    <!-- Main Content -->
     <div id="main-content">
-      <!-- Frame Panel -->
       <div id="frame-panel">
         <h3>📋 Frames</h3>
         <div id="frame-list"></div>
@@ -58,30 +51,28 @@
         <textarea id="frame-notes" placeholder="Add notes for this frame..."></textarea>
       </div>
 
-      <!-- Court Canvas -->
       <div id="court-container">
         <canvas id="play-canvas"></canvas>
       </div>
 
-      <!-- Toolbox -->
       <div id="drawing-toolbox">
         <h3>🛠️ Tools</h3>
         <button class="tool-btn active" data-tool="select">🖱️ Move Player</button>
         <button class="tool-btn" data-tool="delete">🗑️ Delete Item</button>
 
         <h4>Offense</h4>
-        <button class="tool-btn" data-tool="player" data-player="1" draggable="true">1</button>
-        <button class="tool-btn" data-tool="player" data-player="2" draggable="true">2</button>
-        <button class="tool-btn" data-tool="player" data-player="3" draggable="true">3</button>
-        <button class="tool-btn" data-tool="player" data-player="4" draggable="true">4</button>
-        <button class="tool-btn" data-tool="player" data-player="5" draggable="true">5</button>
+        <button class="tool-btn" data-tool="player" data-player="1">1</button>
+        <button class="tool-btn" data-tool="player" data-player="2">2</button>
+        <button class="tool-btn" data-tool="player" data-player="3">3</button>
+        <button class="tool-btn" data-tool="player" data-player="4">4</button>
+        <button class="tool-btn" data-tool="player" data-player="5">5</button>
 
         <h4>Defense</h4>
-        <button class="tool-btn" data-tool="player" data-player="X1" draggable="true">X1</button>
-        <button class="tool-btn" data-tool="player" data-player="X2" draggable="true">X2</button>
-        <button class="tool-btn" data-tool="player" data-player="X3" draggable="true">X3</button>
-        <button class="tool-btn" data-tool="player" data-player="X4" draggable="true">X4</button>
-        <button class="tool-btn" data-tool="player" data-player="X5" draggable="true">X5</button>
+        <button class="tool-btn" data-tool="player" data-player="X1">X1</button>
+        <button class="tool-btn" data-tool="player" data-player="X2">X2</button>
+        <button class="tool-btn" data-tool="player" data-player="X3">X3</button>
+        <button class="tool-btn" data-tool="player" data-player="X4">X4</button>
+        <button class="tool-btn" data-tool="player" data-player="X5">X5</button>
 
         <h4>Actions</h4>
         <button class="tool-btn" data-tool="assign-ball">🏀 Assign Ball</button>
@@ -96,4 +87,3 @@
   </div>
 </body>
 </html>
-
