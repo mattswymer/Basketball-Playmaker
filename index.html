@@ -61,27 +61,30 @@
         <button class="tool-btn" data-tool="delete">🗑️ Delete Item</button>
 
         <h4>Offense</h4>
-        <button class="tool-btn" data-tool="player" data-player="1">1</button>
-        <button class="tool-btn" data-tool="player" data-player="2">2</button>
-        <button class="tool-btn" data-tool="player" data-player="3">3</button>
-        <button class="tool-btn" data-tool="player" data-player="4">4</button>
-        <button class="tool-btn" data-tool="player" data-player="5">5</button>
+        <div class="tool-grid">
+          <button class="tool-btn player-icon offense" data-tool="player" data-player="1">1</button>
+          <button class="tool-btn player-icon offense" data-tool="player" data-player="2">2</button>
+          <button class="tool-btn player-icon offense" data-tool="player" data-player="3">3</button>
+          <button class="tool-btn player-icon offense" data-tool="player" data-player="4">4</button>
+          <button class="tool-btn player-icon offense" data-tool="player" data-player="5">5</button>
+        </div>
 
         <h4>Defense</h4>
-        <button class="tool-btn" data-tool="player" data-player="X1">X1</button>
-        <button class="tool-btn" data-tool="player" data-player="X2">X2</button>
-        <button class="tool-btn" data-tool="player" data-player="X3">X3</button>
-        <button class="tool-btn" data-tool="player" data-player="X4">X4</button>
-        <button class="tool-btn" data-tool="player" data-player="X5">X5</button>
-
+        <div class="tool-grid">
+          <button class="tool-btn player-icon defense" data-tool="player" data-player="X1">X1</button>
+          <button class="tool-btn player-icon defense" data-tool="player" data-player="X2">X2</button>
+          <button class="tool-btn player-icon defense" data-tool="player" data-player="X3">X3</button>
+          <button class="tool-btn player-icon defense" data-tool="player" data-player="X4">X4</button>
+          <button class="tool-btn player-icon defense" data-tool="player" data-player="X5">X5</button>
+        </div>
         <h4>Actions</h4>
         <button class="tool-btn" data-tool="assign-ball">🏀 Assign Ball</button>
-        <button class="tool-btn" data-tool="cut">✂️ Cut</button>
-        <button class="tool-btn" data-tool="dribble">⚡ Dribble</button>
-        <button class="tool-btn" data-tool="pass">🎯 Pass</button>
-        <button class="tool-btn" data-tool="screen">🛡️ Screen</button>
-        <button class="tool-btn" data-tool="shoot">🏹 Shoot</button>
-        <button class="tool-btn" data-tool="move">👟 Move (Defense)</button>
+        <button class="tool-btn" data-tool="cut" title="Hotkey: C">✂️ Cut</button>
+        <button class="tool-btn" data-tool="dribble" title="Hotkey: D">⚡ Dribble</button>
+        <button class="tool-btn" data-tool="pass" title="Hotkey: P">🎯 Pass</button>
+        <button class="tool-btn" data-tool="screen" title="Hotkey: S">🛡️ Screen</button>
+        <button class="tool-btn" data-tool="shoot" title="Hotkey: X">🏹 Shoot</button>
+        <button class="tool-btn" data-tool="move" title="Hotkey: M">👟 Move (Defense)</button>
       </div>
     </div>
   </div>
