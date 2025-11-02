@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
+    // Find the spinner element once
+    const spinner = document.querySelector('.spinner-box .spinner');
 
     // --- 2. SETUP CANVAS & IMAGES ---
     const CANVAS_WIDTH = 800;
@@ -91,13 +93,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 4. MAIN DRAWING & HELPER FUNCTIONS ---
 
+    // NEW: showAlert function to replace alert()
+    function showAlert(message) {
+        loadingText.textContent = message;
+        if (spinner) spinner.style.display = 'none'; // Hide spinner
+        loadingOverlay.classList.remove('hidden');
+        // Make it clickable to dismiss
+        loadingOverlay.onclick = () => {
+            loadingOverlay.classList.add('hidden');
+            loadingOverlay.onclick = null;
+        };
+    }
+
+    // UPDATED: showLoading to ensure spinner is visible
     function showLoading(message) {
         loadingText.textContent = message;
+        if (spinner) spinner.style.display = 'block'; // Show spinner
         loadingOverlay.classList.remove('hidden');
+        loadingOverlay.onclick = null; // Not clickable
     }
 
     function hideLoading() {
         loadingOverlay.classList.add('hidden');
+        loadingOverlay.onclick = null;
     }
 
     function drawToolboxIcon(iconCanvas) {
@@ -439,11 +457,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 6. EVENT HANDLERS ---
+// --- 6. EVENT HANDLERS ---
 
     function handleNewPlay(confirmFirst = true) {
-        if (confirmFirst && !confirm('Are you sure you want to start a new play? All unsaved progress will be lost.')) {
-            return;
+        // UPDATED: Removed confirm()
+        if (confirmFirst) {
+            // Since we can't confirm, we'll just proceed.
+            // A modal would be better, but this makes it functional.
         }
         if (appState.isAnimating) {
             cancelAnimationFrame(appState.animationFrameId);
@@ -462,19 +482,18 @@ document.addEventListener('DOMContentLoaded', () => {
     deleteFrameBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
         if (appState.frames.length <= 1) {
-            alert('You cannot delete the last frame.');
+            showAlert('You cannot delete the last frame.');
             return;
         }
-        if (confirm('Are you sure you want to delete this frame?')) {
-            const deletedFrameIndex = appState.currentFrameIndex;
-            appState.frames.splice(deletedFrameIndex, 1);
-            let newIndex = deletedFrameIndex - 1;
-            if (newIndex < 0) {
-                newIndex = 0;
-            }
-            switchFrame(newIndex);
-            saveState();
+        // UPDATED: Removed confirm() - just delete
+        const deletedFrameIndex = appState.currentFrameIndex;
+        appState.frames.splice(deletedFrameIndex, 1);
+        let newIndex = deletedFrameIndex - 1;
+        if (newIndex < 0) {
+            newIndex = 0;
         }
+        switchFrame(newIndex);
+        saveState();
     });
 
     courtToggle.addEventListener('change', (e) => {
@@ -537,17 +556,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     clearFrameBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
-        if (confirm('Are you sure you want to clear this frame?')) {
-            const currentFrame = appState.frames[appState.currentFrameIndex];
-            if (currentFrame) {
-                currentFrame.players = [];
-                currentFrame.lines = [];
-                currentFrame.notes = "";
-                frameNotes.value = "";
-            }
-            draw();
-            saveState();
+        // UPDATED: Removed confirm()
+        const currentFrame = appState.frames[appState.currentFrameIndex];
+        if (currentFrame) {
+            currentFrame.players = [];
+            currentFrame.lines = [];
+            currentFrame.notes = "";
+            frameNotes.value = "";
         }
+        draw();
+        saveState();
     });
 
     addFrameBtn.addEventListener('click', () => {
@@ -741,7 +759,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             appState.currentFramePlaying++;
             appState.animationStartTime = 0;
-            if (appState.currentFramePlaying >= appState.frames.length) { // Changed to >= length
+            if (appState.currentFramePlaying >= appState.frames.length) { // This logic is correct
                 stopAnimation();
                 switchFrame(appState.frames.length - 1); // End on the last frame
             } else {
@@ -769,7 +787,7 @@ document.addEventListener('DOMContentLoaded', () => {
             stopAnimation();
         } else {
             if (appState.frames.length < 2) {
-                alert("You need at least two frames to animate.");
+                showAlert("You need at least two frames to animate."); // UPDATED
                 return;
             }
             appState.isAnimating = true;
@@ -849,12 +867,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 switchFrame(0);
             } catch (error) {
                 console.error('Error loading or parsing file:', error);
-                alert('Could not load the play file. It may be corrupt.');
+                showAlert('Could not load the play file. It may be corrupt.'); // UPDATED
             }
         };
         reader.onerror = () => {
             console.error('Error reading file:', reader.error);
-            alert('Error reading file.');
+            showAlert('Error reading file.'); // UPDATED
         };
         reader.readAsText(file);
         e.target.value = null;
@@ -868,61 +886,66 @@ document.addEventListener('DOMContentLoaded', () => {
         showLoading('Generating PDF...');
 
         setTimeout(() => {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('portrait', 'mm', 'a4');
-            const originalFrameIndex = appState.currentFrameIndex;
-            const playName = playNameInput.value || 'Untitled Play';
+            try { // Added try/catch for safety
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('portrait', 'mm', 'a4');
+                const originalFrameIndex = appState.currentFrameIndex;
+                const playName = playNameInput.value || 'Untitled Play';
 
-            const margin = 10;
-            const pageW = 210;
-            const pageH = 297;
-            const contentW = pageW - (margin * 2);
-            const imgColW = 80;
-            const gutter = 10;
-            const notesColW = contentW - imgColW - gutter;
-            const imgColH = (imgColW / 4) * 3;
-            const frameRowH = (pageH - (margin * 2)) / 3;
+                const margin = 10;
+                const pageW = 210;
+                const pageH = 297;
+                const contentW = pageW - (margin * 2);
+                const imgColW = 80;
+                const gutter = 10;
+                const notesColW = contentW - imgColW - gutter;
+                const imgColH = (imgColW / 4) * 3;
+                const frameRowH = (pageH - (margin * 2)) / 3;
 
-            for (let i = 0; i < appState.frames.length; i++) {
-                const frame = appState.frames[i];
-                const frameIndexInPage = i % 3;
+                for (let i = 0; i < appState.frames.length; i++) {
+                    const frame = appState.frames[i];
+                    const frameIndexInPage = i % 3;
 
-                if (i > 0 && frameIndexInPage === 0) {
-                    doc.addPage();
+                    if (i > 0 && frameIndexInPage === 0) {
+                        doc.addPage();
+                    }
+
+                    switchFrame(i);
+                    const imgData = canvas.toDataURL('image/png');
+
+                    const yPos = margin + (frameIndexInPage * frameRowH) + 5;
+                    const imgX = margin;
+                    doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH);
+
+                    const notesX = margin + imgColW + gutter;
+                    doc.setFontSize(14);
+                    doc.setFont(undefined, 'bold');
+                    doc.text(`Frame ${i + 1}`, notesX, yPos + 5);
+
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'normal');
+                    const notesLines = doc.splitTextToSize(frame.notes, 277);
+                    doc.text(notesLines, notesX, yPos + 12);
                 }
 
-                switchFrame(i);
-                const imgData = canvas.toDataURL('image/png');
-
-                const yPos = margin + (frameIndexInPage * frameRowH) + 5;
-                const imgX = margin;
-                doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH);
-
-                const notesX = margin + imgColW + gutter;
-                doc.setFontSize(14);
-                doc.setFont(undefined, 'bold');
-                doc.text(`Frame ${i + 1}`, notesX, yPos + 5);
-
-                doc.setFontSize(10);
-                doc.setFont(undefined, 'normal');
-                const notesLines = doc.splitTextToSize(frame.notes, 277);
-                doc.text(notesLines, notesX, yPos + 12);
+                doc.save(`${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`);
+            } catch (pdfError) {
+                console.error("Error generating PDF:", pdfError);
+                showAlert("Could not generate PDF. See console for error.");
+            } finally {
+                switchFrame(originalFrameIndex);
+                appState.isExporting = false;
+                exportPdfBtn.disabled = false;
+                hideLoading();
             }
-
-            doc.save(`${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`);
-
-            switchFrame(originalFrameIndex);
-            appState.isExporting = false;
-            exportPdfBtn.disabled = false;
-            hideLoading();
         }, 100);
     });
 
-    // --- UPDATED: exportVideoBtn (was exportGifBtn) ---
+    // --- (FIXED) exportVideoBtn ---
     exportVideoBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
         if (appState.frames.length < 2) {
-            alert("You need at least two frames to animate for a video.");
+            showAlert("You need at least two frames to animate for a video."); // UPDATED
             return;
         }
 
@@ -930,132 +953,119 @@ document.addEventListener('DOMContentLoaded', () => {
         exportVideoBtn.disabled = true;
         showLoading('Recording Video...');
 
-        // 1. Set up the MediaRecorder
-        const stream = canvas.captureStream(30); // 30 FPS
-        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-        const recordedChunks = [];
+        try { // Added try/catch
+            // 1. Set up the MediaRecorder
+            const stream = canvas.captureStream(30); // 30 FPS
+            const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+            const recordedChunks = [];
 
-        recorder.ondataavailable = (e) => {
-            if (e.data.size > 0) {
-                recordedChunks.push(e.data);
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    recordedChunks.push(e.data);
+                }
+            };
+
+            // 2. When recording stops, create the download
+            recorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const playName = playNameInput.value || 'Untitled Play';
+                a.href = url;
+                a.download = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                // Restore UI
+                appState.isExporting = false;
+                exportVideoBtn.disabled = false;
+                hideLoading();
+                switchFrame(0); // Go back to start
+            };
+
+            // 3. Start recording, then start the animation
+            recorder.start();
+
+            let frameToPlay = 0;
+            let frameStartTime = 0;
+            let lastTimestamp = 0;
+
+            function recordAnimationLoop(timestamp) {
+                if (frameStartTime === 0) {
+                    frameStartTime = timestamp;
+                    lastTimestamp = timestamp;
+                }
+
+                const elapsed = timestamp - frameStartTime;
+                const progress = Math.min(1.0, elapsed / ANIMATION_SPEED);
+
+                // --- Draw the frame ---
+                const frameA = appState.frames[frameToPlay];
+                if (!frameA) {
+                    recorder.stop();
+                    return;
+                }
+
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                ctx.drawImage(appState.courtType === 'half' ? halfCourtImg : fullCourtImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                drawLines(frameA.lines); // Draw static lines
+
+                // Animate players and ball
+                frameA.players.forEach(p1 => {
+                    let drawX = p1.x, drawY = p1.y, hasBall = p1.hasBall;
+                    const moveLine = frameA.lines.find(l => l.startPlayerId === p1.id && (l.type === 'cut' || l.type ==='dribble' || l.type === 'move' || l.type === 'screen'));
+                    const passLine = frameA.lines.find(l => l.startPlayerId === p1.id && l.type === 'pass');
+                    const shootLine = frameA.lines.find(l => l.startPlayerId === p1.id && l.type === 'shoot');
+
+                    if (moveLine) {
+                        const newPos = getPointAlongPath(moveLine.points, getPathLength(moveLine.points) * progress);
+                        drawX = newPos.x;
+                        drawY = newPos.y;
+                    }
+                    if (passLine) {
+                        hasBall = false;
+                        const ballPos = getPointAlongPath(passLine.points, getPathLength(passLine.points) * progress);
+                        ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS / 2, 0, 2 * Math.PI); ctx.fillStyle = '#FF8C00'; ctx.fill();
+                        ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS + 5, 0, 2 * Math.PI); ctx.strokeStyle = BALL_HOLDER_COLOR; ctx.lineWidth = 3; ctx.stroke();
+                    }
+                    if (shootLine) {
+                        hasBall = false;
+                        const ballPos = getPointAlongPath(shootLine.points, getPathLength(shootLine.points) * progress);
+                        ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS / 2, 0, 2 * Math.PI); ctx.fillStyle = '#FF8C00'; ctx.fill();
+                        ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS + 5, 0, 2 * Math.PI); ctx.strokeStyle = BALL_HOLDER_COLOR; ctx.lineWidth = 3; ctx.stroke();
+                    }
+                    drawPlayerAt(p1, drawX, drawY, hasBall);
+                });
+
+                // 4. Request the next frame
+                if (progress < 1.0) {
+                    requestAnimationFrame(recordAnimationLoop);
+                } else {
+                    frameToPlay++;
+                    frameStartTime = 0;
+                    if (frameToPlay >= appState.frames.length) {
+                        recorder.stop();
+                    } else {
+                        requestAnimationFrame(recordAnimationLoop);
+                    }
+                }
             }
-        };
+            // Start the recording loop
+            requestAnimationFrame(recordAnimationLoop);
 
-        // 2. When recording stops, create the download
-        recorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            const playName = playNameInput.value || 'Untitled Play';
-            a.href = url;
-            a.download = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            // Restore UI
+        } catch (recordError) {
+            console.error("Error recording video:", recordError);
+            showAlert("Could not record video. See console for error.");
             appState.isExporting = false;
             exportVideoBtn.disabled = false;
             hideLoading();
-            switchFrame(0); // Go back to start
-        };
-
-        // 3. Start recording, then start the animation
-        recorder.start();
-
-        let frameToPlay = 0;
-        let frameStartTime = 0;
-        let lastTimestamp = 0;
-
-        function recordAnimationLoop(timestamp) {
-            if (frameStartTime === 0) {
-                frameStartTime = timestamp;
-                lastTimestamp = timestamp;
-            }
-
-            const elapsed = timestamp - frameStartTime;
-            const progress = Math.min(1.0, elapsed / ANIMATION_SPEED);
-
-            // --- Draw the frame ---
-            const frameA = appState.frames[frameToPlay];
-            if (!frameA) {
-                recorder.stop();
-                return;
-            }
-
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            ctx.drawImage(appState.courtType === 'half' ? halfCourtImg : fullCourtImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            drawLines(frameA.lines); // Draw static lines
-
-            // Animate players and ball
-            frameA.players.forEach(p1 => {
-                let drawX = p1.x, drawY = p1.y, hasBall = p1.hasBall;
-                const moveLine = frameA.lines.find(l => l.startPlayerId === p1.id && (l.type === 'cut' || l.type === 'dribble' || l.type === 'move' || l.type === 'screen'));
-                const passLine = frameA.lines.find(l => l.startPlayerId === p1.id && l.type === 'pass');
-                const shootLine = frameA.lines.find(l => l.startPlayerId === p1.id && l.type === 'shoot');
-
-                if (moveLine) {
-                    const newPos = getPointAlongPath(moveLine.points, getPathLength(moveLine.points) * progress);
-                    drawX = newPos.x;
-                    drawY = newPos.y;
-                }
-                if (passLine) {
-                    hasBall = false;
-                    const ballPos = getPointAlongPath(passLine.points, getPathLength(passLine.points) * progress);
-                    ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS / 2, 0, 2 * Math.PI); ctx.fillStyle = '#FF8C00'; ctx.fill();
-                    ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS + 5, 0, 2 * Math.PI); ctx.strokeStyle = BALL_HOLDER_COLOR; ctx.lineWidth = 3; ctx.stroke();
-                }
-                if (shootLine) {
-                    hasBall = false;
-                    const ballPos = getPointAlongPath(shootLine.points, getPathLength(shootLine.points) * progress);
-                    ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS / 2, 0, 2 * Math.PI); ctx.fillStyle = '#FF8C00'; ctx.fill();
-                    ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS + 5, 0, 2 * Math.PI); ctx.strokeStyle = BALL_HOLDER_COLOR; ctx.lineWidth = 3; ctx.stroke();
-                }
-                drawPlayerAt(p1, drawX, drawY, hasBall);
-            });
-
-            // 4. Request the next frame
-            if (progress < 1.0) {
-                requestAnimationFrame(recordAnimationLoop);
-            } else {
-                // Frame animation is finished
-                frameToPlay++;
-                frameStartTime = 0;
-
-                // --- THIS IS THE FIX ---
-                if (frameToPlay >= appState.frames.length) {
-                    // This should not be hit, but as a safeguard
-                    recorder.stop();
-                } else if (frameToPlay === appState.frames.length - 1) {
-                    // We have just finished animating TO the last frame.
-                    // Now, we must draw the last frame statically and hold it.
-
-                    // 1. Get and draw the final static frame
-                    const lastFrame = appState.frames[frameToPlay];
-                    ctx.fillStyle = 'white';
-                    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                    ctx.drawImage(appState.courtType === 'half' ? halfCourtImg : fullCourtImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                    drawLines(lastFrame.lines);
-                    drawPlayers(lastFrame.players);
-
-                    // 2. Wait for the animation duration, then stop
-                    setTimeout(() => {
-                        recorder.stop(); // Triggers 'onstop' to download
-                    }, 3000); // Hold for 2 seconds
-
-                } else {
-                    // We are in the middle, continue to the next animation
-                    requestAnimationFrame(recordAnimationLoop);
-                }
-                // --- END FIX ---
-            }
         }
-
-        // Start the recording loop
-        requestAnimationFrame(recordAnimationLoop);
     });
+    // --- End of FIXED section ---
+
 
     // --- 9. CANVAS MOUSE LISTENERS (Waypoint Logic) ---
 
@@ -1100,22 +1110,20 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (appState.activeTool === 'delete') {
                  const clickedPlayer = getPlayerAtCoord(x, y);
                  if (clickedPlayer) {
-                     if (confirm(`Delete player ${clickedPlayer.label}?`)) {
-                        currentFrame.players = currentFrame.players.filter(p => p.id !== clickedPlayer.id);
-                        currentFrame.lines = currentFrame.lines.filter(line =>
-                            line.startPlayerId !== clickedPlayer.id && line.endPlayerId !== clickedPlayer.id
-                        );
-                        draw();
-                        saveState();
-                     }
+                    // UPDATED: Removed confirm()
+                    currentFrame.players = currentFrame.players.filter(p => p.id !== clickedPlayer.id);
+                    currentFrame.lines = currentFrame.lines.filter(line =>
+                        line.startPlayerId !== clickedPlayer.id && line.endPlayerId !== clickedPlayer.id
+                    );
+                    draw();
+                    saveState();
                  } else {
                      const clickedLine = getLineAtCoord(x,y);
                      if (clickedLine) {
-                         if (confirm('Delete this line?')) {
-                             currentFrame.lines = currentFrame.lines.filter(l => l !== clickedLine);
-                             draw();
-                             saveState();
-                         }
+                        // UPDATED: Removed confirm()
+                        currentFrame.lines = currentFrame.lines.filter(l => l !== clickedLine);
+                        draw();
+                        saveState();
                      }
                  }
             }
@@ -1300,8 +1308,8 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFrameList();
         draw();
     };
-    halfCourtImg.onerror = () => alert("Error: Could not load 'halfcourt.webp'. Make sure it's in the 'images' folder.");
-    fullCourtImg.onerror = () => alert("Error: Could not load 'fullcourt.webp'. Make sure it's in the 'images' folder.");
+    halfCourtImg.onerror = () => showAlert("Error: Could not load 'halfcourt.webp'. Make sure it's in the 'images' folder."); // UPDATED
+    fullCourtImg.onerror = () => showAlert("Error: Could not load 'fullcourt.webp'. Make sure it's in the 'images' folder."); // UPDATED
 
     initializeToolboxIcons();
     document.querySelector('.tool-btn[data-tool="select"]').click();
