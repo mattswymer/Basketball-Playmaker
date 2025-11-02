@@ -1,254 +1,300 @@
-/* --- Basic Setup & App Layout --- */
+/* ===== RESET & BASE ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 body {
-    font-family: Arial, sans-serif;
-    background-color: #f0f0f0;
-    margin: 0;
-    padding: 20px;
-    box-sizing: border-box;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  padding: 20px;
 }
 
+/* ===== APP CONTAINER ===== */
 #app-container {
-    max-width: 1400px;
-    margin: 0 auto;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    overflow: hidden;
+  max-width: 1600px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  overflow: hidden;
 }
 
-/* --- 1. Top Toolbar --- */
+/* ===== TOP TOOLBAR ===== */
 #top-toolbar {
-    padding: 15px 20px;
-    background-color: #333;
-    color: white;
-    display: flex;
-    align-items: center;
-    gap: 15px; /* Adds spacing between buttons */
+  padding: 15px 20px;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 #top-toolbar label {
-    font-weight: bold;
+  font-weight: 600;
+  font-size: 14px;
 }
 
 #top-toolbar input[type="text"],
-#top-toolbar select,
-#top-toolbar button {
-    padding: 8px 12px;
-    border-radius: 5px;
-    border: none;
-    font-size: 14px;
+#top-toolbar select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: none;
+  font-size: 14px;
+  background: rgba(255,255,255,0.95);
+  transition: all 0.2s;
+}
+
+#top-toolbar input[type="text"]:focus,
+#top-toolbar select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.4);
 }
 
 #top-toolbar button {
-    background-color: #007bff;
-    color: white;
-    cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
 }
 
-#top-toolbar button:hover {
-    background-color: #0056b3;
+#top-toolbar button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 
-#top-toolbar #save-play { background-color: #28a745; } /* Green */
-#top-toolbar #save-play:hover { background-color: #218838; }
-#top-toolbar #load-play { background-color: #17a2b8; } /* Teal */
-#top-toolbar #load-play:hover { background-color: #138496; }
-#top-toolbar #clear-frame { background-color: #dc3545; } /* Red */
-#top-toolbar #clear-frame:hover { background-color: #c82333; }
+#top-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
-/* --- 2. Main Content Area (Flexbox Layout) --- */
+/* Button Colors */
+.btn-primary { background-color: #3498db; }
+.btn-primary:hover:not(:disabled) { background-color: #2980b9; }
+
+.btn-success { background-color: #27ae60; }
+.btn-success:hover:not(:disabled) { background-color: #229954; }
+
+.btn-info { background-color: #16a085; }
+.btn-info:hover:not(:disabled) { background-color: #138d75; }
+
+.btn-danger { background-color: #e74c3c; }
+.btn-danger:hover:not(:disabled) { background-color: #c0392b; }
+
+.btn-warning { background-color: #f39c12; }
+.btn-warning:hover:not(:disabled) { background-color: #d68910; }
+
+/* ===== INSTRUCTION BAR ===== */
+#instruction-bar {
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #fff3cd 0%, #ffe8a1 100%);
+  border-bottom: 2px solid #ffc107;
+  text-align: center;
+  font-size: 14px;
+  color: #856404;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+#instruction-bar::before {
+  content: "💡";
+  font-size: 18px;
+}
+
+/* ===== MAIN CONTENT ===== */
 #main-content {
-    display: flex;
-    flex-direction: row;
-    height: 700px; /* Set a fixed height for the main app area */
+  display: flex;
+  height: 700px;
 }
 
-/* --- 2a. Frame Panel (Left) --- */
+/* ===== FRAME PANEL ===== */
 #frame-panel {
-    width: 20%;
-    min-width: 200px;
-    background: #fdfdfd;
-    border-right: 1px solid #ddd;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
+  width: 240px;
+  background: #f8f9fa;
+  border-right: 1px solid #dee2e6;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
 }
 
 #frame-panel h3 {
-    margin-top: 0;
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: #2c3e50;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 8px;
 }
 
 #frame-list {
-    flex-grow: 1; /* Makes the list take up available space */
-    overflow-y: auto; /* Adds scrolling if frames exceed height */
-    border: 1px solid #eee;
-    background: #fff;
+  flex-grow: 1;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  background: white;
+  border-radius: 6px;
+  padding: 8px;
+  min-height: 200px;
 }
 
 .frame-thumbnail {
-    padding: 12px;
-    border-bottom: 1px solid #eee;
-    cursor: pointer;
-}
-
-.frame-thumbnail.active {
-    background-color: #007bff;
-    color: white;
-    font-weight: bold;
+  padding: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+  background: white;
+  border: 2px solid #e0e0e0;
 }
 
 .frame-thumbnail:hover:not(.active) {
-    background-color: #f4f4f4;
+  border-color: #3498db;
+  transform: translateX(2px);
 }
 
-#add-frame {
-    width: 100%;
-    padding: 10px;
-    margin-top: 10px;
-    background-color: #28a745;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 16px;
+.frame-thumbnail.active {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  border-color: #2980b9;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
 }
 
-#add-frame:hover {
-    background-color: #218838;
+.frame-thumbnail-label {
+  text-align: center;
+  margin-top: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.frame-thumbnail.active .frame-thumbnail-label {
+  color: white;
+}
+
+.frame-controls {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 15px;
+}
+
+.frame-controls button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
 }
 
 #frame-notes {
-    width: calc(100% - 20px); /* Adjust for padding */
-    height: 150px;
-    margin-top: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    padding: 10px;
-    font-family: Arial, sans-serif;
-    resize: vertical; /* Allow user to resize vertically */
+  width: 100%;
+  height: 120px;
+  border: 2px solid #dee2e6;
+  border-radius: 6px;
+  padding: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  transition: border-color 0.2s;
 }
 
-/* --- 2b. Court Canvas (Center) --- */
+#frame-notes:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+/* ===== CANVAS CONTAINER ===== */
 #court-container {
-    flex-grow: 1; /* This makes the canvas take up the remaining space */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background-color: #f4f4f4;
-    padding: 20px;
-    overflow: hidden; /* Ensures canvas doesn't overflow */
+  flex-grow: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #ecf0f1;
+  padding: 20px;
+  position: relative;
 }
 
 #play-canvas {
-    border: 2px solid #555;
-    background-color: white; /* Fallback color */
-    
-    /* These images are placeholders. You should download your own court images. */
-    /* We'll use JavaScript to toggle these classes */
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
+  border: 3px solid #34495e;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  transition: all 0.3s;
+  cursor: crosshair;
 }
 
-#play-canvas.half-court {
-    background-image: url('images/halfcourt.webp'); 
+#play-canvas.drag-over {
+  border: 3px dashed #3498db;
+  box-shadow: inset 0 0 30px rgba(52, 152, 219, 0.2);
+  transform: scale(1.01);
 }
 
-#play-canvas.full-court {
-    background-image: url('images/fullcourt.webp');
-}
-
-
-/* --- 2c. Drawing Toolbox (Right) --- */
+/* ===== TOOLBOX ===== */
 #drawing-toolbox {
-    width: 15%;
-    min-width: 160px;
-    background: #fdfdfd;
-    border-left: 1px solid #ddd;
-    padding: 15px;
-    overflow-y: auto;
+  width: 200px;
+  background: #f8f9fa;
+  border-left: 1px solid #dee2e6;
+  padding: 15px;
+  overflow-y: auto;
 }
 
-#drawing-toolbox h3, #drawing-toolbox h4 {
-    margin-top: 0;
-    margin-bottom: 10px;
+#drawing-toolbox h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #2c3e50;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 8px;
 }
 
 #drawing-toolbox h4 {
-    margin-top: 15px;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 5px;
+  margin: 15px 0 8px 0;
+  font-size: 14px;
+  color: #7f8c8d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .tool-btn {
-    display: block;
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 8px;
-    font-size: 14px;
-    text-align: left;
-    background-color: #f8f9fa;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    cursor: pointer;
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 6px;
+  font-size: 14px;
+  text-align: left;
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
 }
 
-.tool-btn:hover {
-    background-color: #e2e6ea;
+.tool-btn:hover:not(.active) {
+  border-color: #3498db;
+  transform: translateX(2px);
 }
 
 .tool-btn.active {
-    background-color: #007bff;
-    color: white;
-    border-color: #0056b3;
-    font-weight: bold;
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  color: white;
+  border-color: #2980b9;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
 }
 
-/* --- New Button Styles --- */
-
-/* 'New Play' button in orange */
-#top-toolbar #new-play { background-color: #fd7e14; }
-#top-toolbar #new-play:hover { background-color: #e37012; }
-
-/* 'Delete Frame' button in red */
-#delete-frame {
-    width: 100%;
-    padding: 10px;
-    margin-top: 8px; /* Added spacing */
-    background-color: #dc3545;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 16px;
+.tool-btn.dragging {
+  opacity: 0.5;
+  transform: scale(0.95);
 }
 
-#delete-frame:hover {
-    background-color: #c82333;
-}
-
-/* 'Delete Item' tool button in red */
 .tool-btn[data-tool="delete"] {
-    background-color: #fbebee;
-    color: #c82333;
-    border-color: #c82333;
-}
-
-.tool-btn[data-tool="delete"].active {
-    background-color: #dc3545;
-    color: white;
-}
-
-/* --- New Drag-and-Drop Styles --- */
-
-/* Style for the button as it's being dragged */
-.tool-btn[data-tool="player"].dragging {
-    opacity: 0.5;
-    transform: scale(0.9);
-}
-
-/* Style for the canvas when a player is being dragged over it */
-#play-canvas.drag-over {
-    border: 3px dashed #007bff;
-    box-shadow: inset 0 0 30px rgba(0,123,255,0.2);
-}
+  background:
