@@ -21,12 +21,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const frameNotes = document.getElementById('frame-notes');
     const toolbox = document.getElementById('drawing-toolbox');
     const playerToolIcons = document.querySelectorAll('.player-tool-icon');
-    
-    // NEW: Undo/Redo Buttons
+
     const undoBtn = document.getElementById('undo-btn');
     const redoBtn = document.getElementById('redo-btn');
 
-    // NEW: Loading Modal Elements
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
 
@@ -45,8 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const createNewFrame = (id) => ({
         id: id,
         notes: "",
-        players: [],
-        lines: []
+        players: [], // Player: { id, x, y, radius, label, hasBall, isOffense }
+        lines: [] // Line: { type, startPlayerId, endPlayerId, points: [{x,y}, ...] }
     });
 
     // Helper to get a deep copy of the frames
@@ -73,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
             animationStartTime: 0,
             currentFramePlaying: 0,
 
-            // NEW: History Stack
             history: [copyFrames(initialFrames)], // Save the initial state
             historyIndex: 0,
             noteDebounceTimer: null
@@ -89,7 +86,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const BALL_HOLDER_COLOR = '#000000';
     const LINE_COLOR = '#343a40';
     const ANIMATION_SPEED = 1500;
-    const CLICK_TOLERANCE = 10; // Pixels for line deletion
+    const CLICK_TOLERANCE = 10;
+
+    // REMOVED: RIM_COORDS constant is no longer needed
 
     // --- 4. MAIN DRAWING & HELPER FUNCTIONS ---
 
@@ -196,6 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const start = points[i];
                 let end = { ...points[i+1] }; // Clone
 
+                // Line shortening logic
                 if (i === points.length - 2) {
                     const endPlayer = endPlayerId ? currentFrame.players.find(p => p.id === endPlayerId) : null;
                     if (endPlayer) {
@@ -211,6 +211,29 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 }
+
+                // Specific rendering for 'shoot' lines
+                if (type === 'shoot') {
+                    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+                    const offset = 4; // Distance between the two lines
+
+                    ctx.setLineDash([]);
+                    ctx.beginPath();
+                    ctx.moveTo(start.x + Math.sin(angle) * offset, start.y - Math.cos(angle) * offset);
+                    ctx.lineTo(end.x + Math.sin(angle) * offset, end.y - Math.cos(angle) * offset);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(start.x - Math.sin(angle) * offset, start.y + Math.cos(angle) * offset);
+                    ctx.lineTo(end.x - Math.sin(angle) * offset, end.y + Math.cos(angle) * offset);
+                    ctx.stroke();
+
+                    // Only draw arrowhead for the second line to prevent overlap
+                    drawArrowhead({x: end.x - Math.sin(angle) * offset, y: end.y + Math.cos(angle) * offset}, angle);
+
+                    continue; // Skip generic line drawing below
+                }
+
 
                 switch (type) {
                     case 'pass':
@@ -228,14 +251,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.moveTo(start.x, start.y);
                 ctx.lineTo(end.x, end.y);
                 ctx.stroke();
+
                 ctx.setLineDash([]);
 
+                // Draw endcap only on the last segment
                 if (i === points.length - 2) {
                     const angle = Math.atan2(end.y - start.y, end.x - start.x);
                     switch (type) {
                         case 'cut':
                         case 'move':
-                        case 'shoot':
                         case 'pass':
                             drawArrowhead(end, angle);
                             break;
@@ -312,7 +336,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
 
-    // NEW: Helper to find a line at a specific coordinate
     function getLineAtCoord(x, y) {
         const currentFrame = appState.frames[appState.currentFrameIndex];
         if (!currentFrame) return null;
@@ -322,13 +345,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const p1 = line.points[i];
                 const p2 = line.points[i+1];
 
-                // Calculate distance from point (x,y) to line segment p1-p2
                 const dx = p2.x - p1.x;
                 const dy = p2.y - p1.y;
                 const lenSq = dx * dx + dy * dy;
 
                 let t = ((x - p1.x) * dx + (y - p1.y) * dy) / lenSq;
-                t = Math.max(0, Math.min(1, t)); // Clamp to segment
+                t = Math.max(0, Math.min(1, t));
 
                 const closestX = p1.x + t * dx;
                 const closestY = p1.y + t * dy;
@@ -336,11 +358,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const distSq = (x - closestX)**2 + (y - closestY)**2;
 
                 if (Math.sqrt(distSq) < CLICK_TOLERANCE) {
-                    return line; // Found a line!
+                    return line;
                 }
             }
         }
-        return null; // No line found
+        return null;
     }
 
 
@@ -392,12 +414,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function saveState() {
-        // Clear the "redo" future
         if (appState.historyIndex < appState.history.length - 1) {
             appState.history = appState.history.slice(0, appState.historyIndex + 1);
         }
 
-        // Add new state
         appState.history.push(copyFrames(appState.frames));
         appState.historyIndex++;
 
@@ -408,7 +428,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (appState.historyIndex > 0) {
             appState.historyIndex--;
             appState.frames = copyFrames(appState.history[appState.historyIndex]);
-            // Force a full redraw of the correct frame
             switchFrame(appState.currentFrameIndex);
             updateHistoryButtons();
         }
@@ -418,7 +437,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (appState.historyIndex < appState.history.length - 1) {
             appState.historyIndex++;
             appState.frames = copyFrames(appState.history[appState.historyIndex]);
-            // Force a full redraw
             switchFrame(appState.currentFrameIndex);
             updateHistoryButtons();
         }
@@ -439,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFrameList();
         switchFrame(0);
         instructionText.textContent = 'Select a tool to begin';
-        updateHistoryButtons(); // Reset history buttons
+        updateHistoryButtons();
     }
 
     newPlayBtn.addEventListener('click', () => handleNewPlay(true));
@@ -458,14 +476,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 newIndex = 0;
             }
             switchFrame(newIndex);
-            saveState(); // Save this change
+            saveState();
         }
     });
 
     courtToggle.addEventListener('change', (e) => {
         appState.courtType = e.target.value;
         draw();
-        // Note: We don't save history for view changes, only data changes.
     });
 
     toolbox.addEventListener('click', (e) => {
@@ -481,7 +498,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         canvas.classList.remove('tool-select', 'tool-delete', 'tool-assign-ball', 'tool-player');
 
-        if (tool === 'select') {
+        if (tool === 'player') {
+            instructionText.textContent = `Click or Drag player ${clickedButton.dataset.player} onto the court`;
+            canvas.classList.add('tool-player');
+        } else if (tool === 'select') {
             instructionText.textContent = 'Click and drag a player to move them';
             canvas.classList.add('tool-select');
         } else if (tool === 'delete') {
@@ -491,6 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
             instructionText.textContent = 'Click on an offensive player to give them the ball';
             canvas.classList.add('tool-assign-ball');
         } else {
+            // UPDATED: All actions (including shoot) now use the same manual instruction
             instructionText.textContent = `Click a player to start drawing a ${tool} line. Left-click to finish, right-click to add a waypoint.`;
         }
     });
@@ -511,11 +532,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentFrame) {
             currentFrame.notes = frameNotes.value;
 
-            // Debounce the saveState call for notes
             clearTimeout(appState.noteDebounceTimer);
             appState.noteDebounceTimer = setTimeout(() => {
                 saveState();
-            }, 500); // Save 500ms after user stops typing
+            }, 500);
         }
     });
 
@@ -530,7 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 frameNotes.value = "";
             }
             draw();
-            saveState(); // Save this change
+            saveState();
         }
     });
 
@@ -544,8 +564,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         newFrame.players = JSON.parse(JSON.stringify(currentFrame.players));
 
-        let ballWasPassed = false;
-        let passer = null;
+        let ballWasPassedOrShot = false;
+        let passerOrShooter = null;
 
         currentFrame.lines.forEach(line => {
             if (line.points.length < 2 || !line.startPlayerId) return;
@@ -554,31 +574,38 @@ document.addEventListener('DOMContentLoaded', () => {
             const startPlayer = newFrame.players.find(p => p.id === line.startPlayerId);
             if (!startPlayer) return;
 
-            if (line.type === 'cut' || line.type === 'move' || line.type === 'dribble' || line.type === 'shoot' || line.type === 'screen') {
+            // Player movement
+            if (line.type === 'cut' || line.type === 'move' || line.type === 'dribble' || line.type === 'screen') {
                 startPlayer.x = endPoint.x;
                 startPlayer.y = endPoint.y;
             }
 
+            // Ball passing
             if (line.type === 'pass') {
                 const endPlayer = newFrame.players.find(p => p.id === line.endPlayerId);
                 if (endPlayer) {
                     endPlayer.hasBall = true;
-                    ballWasPassed = true;
-                    passer = startPlayer;
+                    ballWasPassedOrShot = true;
+                    passerOrShooter = startPlayer;
                 }
+            }
+
+            // Ball shooting
+            if (line.type === 'shoot') {
+                ballWasPassedOrShot = true;
+                passerOrShooter = startPlayer;
             }
         });
 
-        if (ballWasPassed && passer) {
-            passer.hasBall = false;
+        if (ballWasPassedOrShot && passerOrShooter) {
+            passerOrShooter.hasBall = false;
         }
 
         appState.frames.push(newFrame);
         switchFrame(appState.frames.length - 1);
-        saveState(); // Save this change
+        saveState();
     });
 
-    // NEW: Undo/Redo listeners
     undoBtn.addEventListener('click', undo);
     redoBtn.addEventListener('click', redo);
     document.addEventListener('keydown', (e) => {
@@ -651,13 +678,20 @@ document.addEventListener('DOMContentLoaded', () => {
         frameA.players.forEach(p1 => {
             let drawX = p1.x, drawY = p1.y, hasBall = p1.hasBall;
 
+            // Player movement lines
             const moveLine = frameA.lines.find(l =>
                 l.startPlayerId === p1.id &&
-                (l.type === 'cut' || l.type === 'dribble' || l.type === 'move' || l.type === 'shoot' || l.type === 'screen')
+                (l.type === 'cut' || l.type === 'dribble' || l.type === 'move' || l.type === 'screen')
             );
 
+            // Pass animation
             const passLine = frameA.lines.find(l =>
                 l.startPlayerId === p1.id && l.type === 'pass'
+            );
+
+            // Shoot animation
+            const shootLine = frameA.lines.find(l =>
+                l.startPlayerId === p1.id && l.type === 'shoot'
             );
 
             if (moveLine) {
@@ -668,12 +702,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 drawY = newPos.y;
             }
 
-            if (passLine) {
+            if (passLine && progress < 1.0) {
                 hasBall = false;
                 const passPathLength = getPathLength(passLine.points);
                 const passDist = passPathLength * progress;
                 const ballPos = getPointAlongPath(passLine.points, passDist);
+                // Draw animated ball
+                ctx.beginPath();
+                ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS / 2, 0, 2 * Math.PI);
+                ctx.fillStyle = '#FF8C00';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS + 5, 0, 2 * Math.PI);
+                ctx.strokeStyle = BALL_HOLDER_COLOR;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
 
+            // Shoot animation logic
+            if (shootLine && progress < 1.0) {
+                hasBall = false;
+                const shootPathLength = getPathLength(shootLine.points);
+                const shootDist = shootPathLength * progress;
+                const ballPos = getPointAlongPath(shootLine.points, shootDist);
+                // Draw animated ball
                 ctx.beginPath();
                 ctx.arc(ballPos.x, ballPos.y, PLAYER_RADIUS / 2, 0, 2 * Math.PI);
                 ctx.fillStyle = '#FF8C00';
@@ -693,9 +745,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             appState.currentFramePlaying++;
             appState.animationStartTime = 0;
-            if (appState.currentFramePlaying >= appState.frames.length - 1) {
+            if (appState.currentFramePlaying >= appState.frames.length) { // Changed to >= length
                 stopAnimation();
-                switchFrame(appState.currentFramePlaying);
+                switchFrame(appState.frames.length - 1); // End on the last frame
             } else {
                 renderFrameList();
                 appState.animationFrameId = requestAnimationFrame(animatePlay);
@@ -791,7 +843,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     appState.nextPlayerId = maxId + 1;
                 }
 
-                // NEW: Initialize history stack after load
                 appState.history = [copyFrames(appState.frames)];
                 appState.historyIndex = 0;
                 updateHistoryButtons();
@@ -858,7 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 doc.setFontSize(10);
                 doc.setFont(undefined, 'normal');
-                const notesLines = doc.splitTextToSize(frame.notes, notesColW);
+                const notesLines = doc.splitTextToSize(frame.notes, 277);
                 doc.text(notesLines, notesX, yPos + 12);
             }
 
@@ -955,7 +1006,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     clickedPlayer.hasBall = !clickedPlayer.hasBall;
                     draw();
-                    saveState(); // Save this change
+                    saveState();
                 }
             } else if (appState.activeTool === 'delete') {
                  const clickedPlayer = getPlayerAtCoord(x, y);
@@ -966,19 +1017,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             line.startPlayerId !== clickedPlayer.id && line.endPlayerId !== clickedPlayer.id
                         );
                         draw();
-                        saveState(); // Save this change
+                        saveState();
                      }
                  } else {
-                     // NEW: Delete line logic
                      const clickedLine = getLineAtCoord(x,y);
                      if (clickedLine) {
                          if (confirm('Delete this line?')) {
                              currentFrame.lines = currentFrame.lines.filter(l => l !== clickedLine);
                              draw();
-                             saveState(); // Save this change
+                             saveState();
                          }
                      }
                  }
+            // REMOVED: 'shoot' logic from here
             }
         }
     });
@@ -1003,9 +1054,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     canvas.classList.add('tool-select:active');
                     e.preventDefault();
                 }
+            // UPDATED: "shoot" is now part of the normal line drawing
             } else if (appState.activeTool !== 'player' && appState.activeTool !== 'assign-ball' && appState.activeTool !== 'delete') {
+                // It's an action tool (cut, pass, shoot, etc.)
                 if (!appState.isDrawingLine) {
+                    // START a new line
                     if (playerAtStart) {
+                        // Check for 'shoot' or 'pass' - must have the ball
+                        if ( (appState.activeTool === 'shoot' || appState.activeTool === 'pass') && !playerAtStart.hasBall) {
+                            instructionText.textContent = "That player doesn't have the ball!";
+                            return;
+                        }
+
                         appState.isDrawingLine = true;
                         appState.previewLine = {
                             type: appState.activeTool,
@@ -1016,6 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         e.preventDefault();
                     }
                 } else {
+                    // FINISH a line (finalize)
                     appState.isDrawingLine = false;
                     const finalLine = appState.previewLine;
                     const finalPoint = { x, y };
@@ -1033,7 +1094,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     instructionText.textContent = `Line created. Click another player to start a new line.`;
                     e.preventDefault();
                     draw();
-                    saveState(); // Save this change
+                    saveState();
                 }
             }
         // --- RIGHT CLICK (for waypoints) ---
@@ -1071,16 +1132,17 @@ document.addEventListener('DOMContentLoaded', () => {
             appState.isDragging = false;
             appState.draggingPlayer = null;
             canvas.classList.remove('tool-select:active');
-            saveState(); // Save this change
+            saveState(); // Save the new player position
         }
     });
 
     canvas.addEventListener('mouseout', (e) => {
+        // Cancel any action if mouse leaves canvas
         if (appState.isDragging) {
             appState.isDragging = false;
             appState.draggingPlayer = null;
             draw();
-            saveState(); // Save this change
+            saveState();
         }
         if (appState.isDrawingLine) {
             appState.isDrawingLine = false;
