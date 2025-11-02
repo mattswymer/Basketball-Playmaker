@@ -1,0 +1,254 @@
+/* --- Basic Setup & App Layout --- */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+    margin: 0;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+#app-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+/* --- 1. Top Toolbar --- */
+#top-toolbar {
+    padding: 15px 20px;
+    background-color: #333;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Adds spacing between buttons */
+}
+
+#top-toolbar label {
+    font-weight: bold;
+}
+
+#top-toolbar input[type="text"],
+#top-toolbar select,
+#top-toolbar button {
+    padding: 8px 12px;
+    border-radius: 5px;
+    border: none;
+    font-size: 14px;
+}
+
+#top-toolbar button {
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+}
+
+#top-toolbar button:hover {
+    background-color: #0056b3;
+}
+
+#top-toolbar #save-play { background-color: #28a745; } /* Green */
+#top-toolbar #save-play:hover { background-color: #218838; }
+#top-toolbar #load-play { background-color: #17a2b8; } /* Teal */
+#top-toolbar #load-play:hover { background-color: #138496; }
+#top-toolbar #clear-frame { background-color: #dc3545; } /* Red */
+#top-toolbar #clear-frame:hover { background-color: #c82333; }
+
+/* --- 2. Main Content Area (Flexbox Layout) --- */
+#main-content {
+    display: flex;
+    flex-direction: row;
+    height: 700px; /* Set a fixed height for the main app area */
+}
+
+/* --- 2a. Frame Panel (Left) --- */
+#frame-panel {
+    width: 20%;
+    min-width: 200px;
+    background: #fdfdfd;
+    border-right: 1px solid #ddd;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+}
+
+#frame-panel h3 {
+    margin-top: 0;
+}
+
+#frame-list {
+    flex-grow: 1; /* Makes the list take up available space */
+    overflow-y: auto; /* Adds scrolling if frames exceed height */
+    border: 1px solid #eee;
+    background: #fff;
+}
+
+.frame-thumbnail {
+    padding: 12px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+}
+
+.frame-thumbnail.active {
+    background-color: #007bff;
+    color: white;
+    font-weight: bold;
+}
+
+.frame-thumbnail:hover:not(.active) {
+    background-color: #f4f4f4;
+}
+
+#add-frame {
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+#add-frame:hover {
+    background-color: #218838;
+}
+
+#frame-notes {
+    width: calc(100% - 20px); /* Adjust for padding */
+    height: 150px;
+    margin-top: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 10px;
+    font-family: Arial, sans-serif;
+    resize: vertical; /* Allow user to resize vertically */
+}
+
+/* --- 2b. Court Canvas (Center) --- */
+#court-container {
+    flex-grow: 1; /* This makes the canvas take up the remaining space */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #f4f4f4;
+    padding: 20px;
+    overflow: hidden; /* Ensures canvas doesn't overflow */
+}
+
+#play-canvas {
+    border: 2px solid #555;
+    background-color: white; /* Fallback color */
+    
+    /* These images are placeholders. You should download your own court images. */
+    /* We'll use JavaScript to toggle these classes */
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+#play-canvas.half-court {
+    background-image: url('images/halfcourt.webp'); 
+}
+
+#play-canvas.full-court {
+    background-image: url('images/fullcourt.webp');
+}
+
+
+/* --- 2c. Drawing Toolbox (Right) --- */
+#drawing-toolbox {
+    width: 15%;
+    min-width: 160px;
+    background: #fdfdfd;
+    border-left: 1px solid #ddd;
+    padding: 15px;
+    overflow-y: auto;
+}
+
+#drawing-toolbox h3, #drawing-toolbox h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+#drawing-toolbox h4 {
+    margin-top: 15px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+.tool-btn {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    text-align: left;
+    background-color: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.tool-btn:hover {
+    background-color: #e2e6ea;
+}
+
+.tool-btn.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #0056b3;
+    font-weight: bold;
+}
+
+/* --- New Button Styles --- */
+
+/* 'New Play' button in orange */
+#top-toolbar #new-play { background-color: #fd7e14; }
+#top-toolbar #new-play:hover { background-color: #e37012; }
+
+/* 'Delete Frame' button in red */
+#delete-frame {
+    width: 100%;
+    padding: 10px;
+    margin-top: 8px; /* Added spacing */
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+#delete-frame:hover {
+    background-color: #c82333;
+}
+
+/* 'Delete Item' tool button in red */
+.tool-btn[data-tool="delete"] {
+    background-color: #fbebee;
+    color: #c82333;
+    border-color: #c82333;
+}
+
+.tool-btn[data-tool="delete"].active {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* --- New Drag-and-Drop Styles --- */
+
+/* Style for the button as it's being dragged */
+.tool-btn[data-tool="player"].dragging {
+    opacity: 0.5;
+    transform: scale(0.9);
+}
+
+/* Style for the canvas when a player is being dragged over it */
+#play-canvas.drag-over {
+    border: 3px dashed #007bff;
+    box-shadow: inset 0 0 30px rgba(0,123,255,0.2);
+}
