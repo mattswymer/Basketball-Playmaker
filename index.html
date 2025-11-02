@@ -24,8 +24,6 @@
       </select>
 
       <button id="new-play" class="btn-warning">🆕 New Play</button>
-      <button id="undo-btn" class="btn-primary" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
-      <button id="redo-btn" class="btn-primary" title="Redo (Ctrl+Y)" disabled>↷ Redo</button>
       <button id="clear-frame" class="btn-danger">🗑️ Clear Frame</button>
       <button id="animate-play" class="btn-primary">▶️ Animate</button>
       <button id="save-play" class="btn-success">💾 Save</button>
@@ -61,18 +59,22 @@
         <button class="tool-btn" data-tool="delete">🗑️ Delete Item</button>
 
         <h4>Offense</h4>
-        <button class="tool-btn" data-tool="player" data-player="1" draggable="true">1</button>
-        <button class="tool-btn" data-tool="player" data-player="2" draggable="true">2</button>
-        <button class="tool-btn" data-tool="player" data-player="3" draggable="true">3</button>
-        <button class="tool-btn" data-tool="player" data-player="4" draggable="true">4</button>
-        <button class="tool-btn" data-tool="player" data-player="5" draggable="true">5</button>
+        <div class="player-palette" id="player-palette-offense">
+          <canvas class="player-tool-icon" data-player="1" draggable="true" title="Drag player 1"></canvas>
+          <canvas class="player-tool-icon" data-player="2" draggable="true" title="Drag player 2"></canvas>
+          <canvas class="player-tool-icon" data-player="3" draggable="true" title="Drag player 3"></canvas>
+          <canvas class="player-tool-icon" data-player="4" draggable="true" title="Drag player 4"></canvas>
+          <canvas class="player-tool-icon" data-player="5" draggable="true" title="Drag player 5"></canvas>
+        </div>
 
         <h4>Defense</h4>
-        <button class="tool-btn" data-tool="player" data-player="X1" draggable="true">X1</button>
-        <button class="tool-btn" data-tool="player" data-player="X2" draggable="true">X2</button>
-        <button class="tool-btn" data-tool="player" data-player="X3" draggable="true">X3</button>
-        <button class="tool-btn" data-tool="player" data-player="X4" draggable="true">X4</button>
-        <button class="tool-btn" data-tool="player" data-player="X5" draggable="true">X5</button>
+        <div class="player-palette" id="player-palette-defense">
+          <canvas class="player-tool-icon" data-player="X1" draggable="true" title="Drag player X1"></canvas>
+          <canvas class="player-tool-icon" data-player="X2" draggable="true" title="Drag player X2"></canvas>
+          <canvas class="player-tool-icon" data-player="X3" draggable="true" title="Drag player X3"></canvas>
+          <canvas class="player-tool-icon" data-player="X4" draggable="true" title="Drag player X4"></canvas>
+          <canvas class="player-tool-icon" data-player="X5" draggable="true" title="Drag player X5"></canvas>
+        </div>
 
         <h4>Actions</h4>
         <button class="tool-btn" data-tool="assign-ball">🏀 Assign Ball</button>
