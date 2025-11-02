@@ -22,6 +22,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const toolbox = document.getElementById('drawing-toolbox');
     const playerToolIcons = document.querySelectorAll('.player-tool-icon');
     
+    // NEW: Undo/Redo Buttons
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
+
     // NEW: Loading Modal Elements
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
@@ -41,29 +45,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const createNewFrame = (id) => ({
         id: id,
         notes: "",
-        players: [], // Player: { id, x, y, radius, label, hasBall, isOffense }
-        lines: [] // Line: { type, startPlayerId, endPlayerId, points: [{x,y}, ...] }
+        players: [],
+        lines: []
     });
 
-    const createInitialState = () => ({
-        courtType: 'half',
-        activeTool: 'select',
-        frames: [ createNewFrame(1) ],
-        currentFrameIndex: 0,
-        nextFrameId: 2,
-        nextPlayerId: 1,
-        isDragging: false,
-        draggingPlayer: null,
-        dragOffsetX: 0,
-        dragOffsetY: 0,
-        isDrawingLine: false,
-        previewLine: null,
-        isAnimating: false,
-        isExporting: false,
-        animationFrameId: null,
-        animationStartTime: 0,
-        currentFramePlaying: 0
-    });
+    // Helper to get a deep copy of the frames
+    const copyFrames = (frames) => JSON.parse(JSON.stringify(frames));
+
+    const createInitialState = () => {
+        const initialFrames = [createNewFrame(1)];
+        return {
+            courtType: 'half',
+            activeTool: 'select',
+            frames: initialFrames,
+            currentFrameIndex: 0,
+            nextFrameId: 2,
+            nextPlayerId: 1,
+            isDragging: false,
+            draggingPlayer: null,
+            dragOffsetX: 0,
+            dragOffsetY: 0,
+            isDrawingLine: false,
+            previewLine: null,
+            isAnimating: false,
+            isExporting: false,
+            animationFrameId: null,
+            animationStartTime: 0,
+            currentFramePlaying: 0,
+
+            // NEW: History Stack
+            history: [copyFrames(initialFrames)], // Save the initial state
+            historyIndex: 0,
+            noteDebounceTimer: null
+        };
+    };
 
     let appState = createInitialState();
 
@@ -74,15 +89,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const BALL_HOLDER_COLOR = '#000000';
     const LINE_COLOR = '#343a40';
     const ANIMATION_SPEED = 1500;
+    const CLICK_TOLERANCE = 10; // Pixels for line deletion
 
     // --- 4. MAIN DRAWING & HELPER FUNCTIONS ---
 
-    // NEW: Helper functions for the loading modal
     function showLoading(message) {
         loadingText.textContent = message;
         loadingOverlay.classList.remove('hidden');
     }
-    
+
     function hideLoading() {
         loadingOverlay.classList.add('hidden');
     }
@@ -92,12 +107,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const isOffense = !label.startsWith('X');
         const toolCtx = iconCanvas.getContext('2d');
         const size = iconCanvas.width;
-        const radius = size / 2 - 4; // Use a small radius
+        const radius = size / 2 - 4;
         const center = size / 2;
-
         toolCtx.clearRect(0, 0, size, size);
-
-        // Draw circle
         toolCtx.beginPath();
         toolCtx.arc(center, center, radius, 0, 2 * Math.PI);
         toolCtx.fillStyle = isOffense ? OFFENSE_COLOR : DEFENSE_COLOR;
@@ -105,8 +117,6 @@ document.addEventListener('DOMContentLoaded', () => {
         toolCtx.strokeStyle = '#000000';
         toolCtx.lineWidth = 2;
         toolCtx.stroke();
-
-        // Draw label
         toolCtx.fillStyle = 'white';
         toolCtx.font = 'bold 16px Arial';
         toolCtx.textAlign = 'center';
@@ -116,7 +126,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function initializeToolboxIcons() {
         playerToolIcons.forEach(icon => {
-            // Set canvas drawing size
             icon.width = 40;
             icon.height = 40;
             drawToolboxIcon(icon);
@@ -187,14 +196,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const start = points[i];
                 let end = { ...points[i+1] }; // Clone
 
-                // Line shortening logic
-                if (i === points.length - 2) { // Only shorten the very last segment
+                if (i === points.length - 2) {
                     const endPlayer = endPlayerId ? currentFrame.players.find(p => p.id === endPlayerId) : null;
                     if (endPlayer) {
                         const dx = end.x - start.x;
                         const dy = end.y - start.y;
                         const dist = Math.sqrt(dx * dx + dy * dy);
-                        // Pull back distance
                         const pullBack = PLAYER_RADIUS + (type === 'pass' ? 7 : 4);
 
                         if (dist > pullBack) {
@@ -223,7 +230,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // Draw endcap only on the last segment
                 if (i === points.length - 2) {
                     const angle = Math.atan2(end.y - start.y, end.x - start.x);
                     switch (type) {
@@ -306,6 +312,38 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
 
+    // NEW: Helper to find a line at a specific coordinate
+    function getLineAtCoord(x, y) {
+        const currentFrame = appState.frames[appState.currentFrameIndex];
+        if (!currentFrame) return null;
+
+        for (const line of currentFrame.lines) {
+            for (let i = 0; i < line.points.length - 1; i++) {
+                const p1 = line.points[i];
+                const p2 = line.points[i+1];
+
+                // Calculate distance from point (x,y) to line segment p1-p2
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const lenSq = dx * dx + dy * dy;
+
+                let t = ((x - p1.x) * dx + (y - p1.y) * dy) / lenSq;
+                t = Math.max(0, Math.min(1, t)); // Clamp to segment
+
+                const closestX = p1.x + t * dx;
+                const closestY = p1.y + t * dy;
+
+                const distSq = (x - closestX)**2 + (y - closestY)**2;
+
+                if (Math.sqrt(distSq) < CLICK_TOLERANCE) {
+                    return line; // Found a line!
+                }
+            }
+        }
+        return null; // No line found
+    }
+
+
     function getMousePos(e) {
         const rect = canvas.getBoundingClientRect();
         return {
@@ -346,6 +384,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- 5. HISTORY (UNDO/REDO) FUNCTIONS ---
+
+    function updateHistoryButtons() {
+        undoBtn.disabled = (appState.historyIndex <= 0);
+        redoBtn.disabled = (appState.historyIndex >= appState.history.length - 1);
+    }
+
+    function saveState() {
+        // Clear the "redo" future
+        if (appState.historyIndex < appState.history.length - 1) {
+            appState.history = appState.history.slice(0, appState.historyIndex + 1);
+        }
+
+        // Add new state
+        appState.history.push(copyFrames(appState.frames));
+        appState.historyIndex++;
+
+        updateHistoryButtons();
+    }
+
+    function undo() {
+        if (appState.historyIndex > 0) {
+            appState.historyIndex--;
+            appState.frames = copyFrames(appState.history[appState.historyIndex]);
+            // Force a full redraw of the correct frame
+            switchFrame(appState.currentFrameIndex);
+            updateHistoryButtons();
+        }
+    }
+
+    function redo() {
+        if (appState.historyIndex < appState.history.length - 1) {
+            appState.historyIndex++;
+            appState.frames = copyFrames(appState.history[appState.historyIndex]);
+            // Force a full redraw
+            switchFrame(appState.currentFrameIndex);
+            updateHistoryButtons();
+        }
+    }
+
+    // --- 6. EVENT HANDLERS ---
+
     function handleNewPlay(confirmFirst = true) {
         if (confirmFirst && !confirm('Are you sure you want to start a new play? All unsaved progress will be lost.')) {
             return;
@@ -359,9 +439,8 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFrameList();
         switchFrame(0);
         instructionText.textContent = 'Select a tool to begin';
+        updateHistoryButtons(); // Reset history buttons
     }
-
-    // --- 5. EVENT HANDLERS ---
 
     newPlayBtn.addEventListener('click', () => handleNewPlay(true));
 
@@ -379,15 +458,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 newIndex = 0;
             }
             switchFrame(newIndex);
+            saveState(); // Save this change
         }
     });
 
     courtToggle.addEventListener('change', (e) => {
         appState.courtType = e.target.value;
         draw();
+        // Note: We don't save history for view changes, only data changes.
     });
 
-    // UPDATED: This listener no longer handles 'player' clicks
     toolbox.addEventListener('click', (e) => {
         if (appState.isAnimating || appState.isExporting) return;
         const clickedButton = e.target.closest('.tool-btn');
@@ -399,7 +479,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const tool = clickedButton.dataset.tool;
         appState.activeTool = tool;
 
-        // Reset canvas classes
         canvas.classList.remove('tool-select', 'tool-delete', 'tool-assign-ball', 'tool-player');
 
         if (tool === 'select') {
@@ -412,14 +491,9 @@ document.addEventListener('DOMContentLoaded', () => {
             instructionText.textContent = 'Click on an offensive player to give them the ball';
             canvas.classList.add('tool-assign-ball');
         } else {
-            // It's an action tool
             instructionText.textContent = `Click a player to start drawing a ${tool} line. Left-click to finish, right-click to add a waypoint.`;
-            // Default crosshair will be used
         }
     });
-
-    // REMOVED: dragstart/dragend from toolbox
-    // MOVED: to individual player icons
 
     frameList.addEventListener('click', (e) => {
         if (appState.isAnimating || appState.isExporting) return;
@@ -436,6 +510,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentFrame = appState.frames[appState.currentFrameIndex];
         if (currentFrame) {
             currentFrame.notes = frameNotes.value;
+
+            // Debounce the saveState call for notes
+            clearTimeout(appState.noteDebounceTimer);
+            appState.noteDebounceTimer = setTimeout(() => {
+                saveState();
+            }, 500); // Save 500ms after user stops typing
         }
     });
 
@@ -450,6 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 frameNotes.value = "";
             }
             draw();
+            saveState(); // Save this change
         }
     });
 
@@ -461,7 +542,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const newFrame = createNewFrame(appState.nextFrameId);
         appState.nextFrameId++;
 
-        // Deep copy players
         newFrame.players = JSON.parse(JSON.stringify(currentFrame.players));
 
         let ballWasPassed = false;
@@ -474,13 +554,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const startPlayer = newFrame.players.find(p => p.id === line.startPlayerId);
             if (!startPlayer) return;
 
-            // Apply movement
             if (line.type === 'cut' || line.type === 'move' || line.type === 'dribble' || line.type === 'shoot' || line.type === 'screen') {
                 startPlayer.x = endPoint.x;
                 startPlayer.y = endPoint.y;
             }
 
-            // Apply pass
             if (line.type === 'pass') {
                 const endPlayer = newFrame.players.find(p => p.id === line.endPlayerId);
                 if (endPlayer) {
@@ -491,17 +569,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Remove ball from passer
         if (ballWasPassed && passer) {
             passer.hasBall = false;
         }
 
         appState.frames.push(newFrame);
         switchFrame(appState.frames.length - 1);
+        saveState(); // Save this change
+    });
+
+    // NEW: Undo/Redo listeners
+    undoBtn.addEventListener('click', undo);
+    redoBtn.addEventListener('click', redo);
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'z') {
+            e.preventDefault();
+            undo();
+        }
+        if (e.ctrlKey && e.key === 'y') {
+            e.preventDefault();
+            redo();
+        }
     });
 
 
-    // --- 6. ANIMATION LOGIC ---
+    // --- 7. ANIMATION LOGIC ---
 
     function getPathLength(points) {
         let totalDistance = 0;
@@ -534,7 +626,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             distanceToTravel -= segmentLength;
         }
-        // If distance is > path length, return last point
         return points[points.length - 1];
     }
 
@@ -555,19 +646,16 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         ctx.drawImage(appState.courtType === 'half' ? halfCourtImg : fullCourtImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-        // Draw ALL lines from the starting frame
         drawLines(frameA.lines);
 
         frameA.players.forEach(p1 => {
             let drawX = p1.x, drawY = p1.y, hasBall = p1.hasBall;
 
-            // Find this player's movement line
             const moveLine = frameA.lines.find(l =>
                 l.startPlayerId === p1.id &&
                 (l.type === 'cut' || l.type === 'dribble' || l.type === 'move' || l.type === 'shoot' || l.type === 'screen')
             );
 
-            // Find this player's pass line
             const passLine = frameA.lines.find(l =>
                 l.startPlayerId === p1.id && l.type === 'pass'
             );
@@ -581,8 +669,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (passLine) {
-                hasBall = false; // Player is passing, loses ball
-                // Animate the pass
+                hasBall = false;
                 const passPathLength = getPathLength(passLine.points);
                 const passDist = passPathLength * progress;
                 const ballPos = getPointAlongPath(passLine.points, passDist);
@@ -649,7 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    // --- 7. SAVE, LOAD, & EXPORT ---
+    // --- 8. SAVE, LOAD, & EXPORT ---
 
     saveBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
@@ -704,6 +791,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     appState.nextPlayerId = maxId + 1;
                 }
 
+                // NEW: Initialize history stack after load
+                appState.history = [copyFrames(appState.frames)];
+                appState.historyIndex = 0;
+                updateHistoryButtons();
+
                 appState.currentFrameIndex = 0;
                 playNameInput.value = appState.playName;
                 courtToggle.value = appState.courtType;
@@ -718,18 +810,16 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Error reading file.');
         };
         reader.readAsText(file);
-        e.target.value = null; // Reset for re-loading same file
+        e.target.value = null;
     });
 
-    // UPDATED: PDF Export with loading modal
     exportPdfBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
 
         appState.isExporting = true;
         exportPdfBtn.disabled = true;
-        showLoading('Generating PDF...'); // Show modal
-        
-        // Wrap in setTimeout to allow modal to render
+        showLoading('Generating PDF...');
+
         setTimeout(() => {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('portrait', 'mm', 'a4');
@@ -753,43 +843,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (i > 0 && frameIndexInPage === 0) {
                     doc.addPage();
                 }
-                
+
                 switchFrame(i);
                 const imgData = canvas.toDataURL('image/png');
-                
+
                 const yPos = margin + (frameIndexInPage * frameRowH) + 5;
                 const imgX = margin;
-                doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH); 
-                
+                doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH);
+
                 const notesX = margin + imgColW + gutter;
                 doc.setFontSize(14);
                 doc.setFont(undefined, 'bold');
-                doc.text(`Frame ${i + 1}`, notesX, yPos + 5); 
-                
+                doc.text(`Frame ${i + 1}`, notesX, yPos + 5);
+
                 doc.setFontSize(10);
                 doc.setFont(undefined, 'normal');
                 const notesLines = doc.splitTextToSize(frame.notes, notesColW);
                 doc.text(notesLines, notesX, yPos + 12);
             }
-            
+
             doc.save(`${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`);
-            
+
             switchFrame(originalFrameIndex);
             appState.isExporting = false;
             exportPdfBtn.disabled = false;
-            hideLoading(); // Hide modal
+            hideLoading();
         }, 100);
     });
-    
-    // UPDATED: GIF Export with loading modal AND new quality settings
+
     exportGifBtn.addEventListener('click', () => {
         if (appState.isAnimating || appState.isExporting) return;
 
         appState.isExporting = true;
         exportGifBtn.disabled = true;
-        showLoading('Generating GIF...'); // Show modal
+        showLoading('Generating GIF...');
 
-        // Wrap in setTimeout
         setTimeout(() => {
             const originalFrameIndex = appState.currentFrameIndex;
             const playName = playNameInput.value || 'Untitled Play';
@@ -802,16 +890,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             switchFrame(originalFrameIndex);
 
-            // --- THIS IS THE FIX ---
             gifshot.createGIF({
                 'images': frameImages,
-                'gifWidth': CANVAS_WIDTH * 0.4, // 320px (Smaller dimensions)
+                'gifWidth': CANVAS_WIDTH * 0.4, // 320px
                 'gifHeight': CANVAS_HEIGHT * 0.4, // 240px
                 'interval': ANIMATION_SPEED / 1000,
                 'numFrames': appState.frames.length,
-                'quality': 20 // 10 is best, 20 is worse but much faster
+                'quality': 20
             }, (obj) => {
-            // --- END FIX ---
                 if (!obj.error) {
                     const a = document.createElement('a');
                     a.href = obj.image;
@@ -826,12 +912,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 appState.isExporting = false;
                 exportGifBtn.disabled = false;
-                hideLoading(); // Hide modal
+                hideLoading();
             });
         }, 100);
     });
 
-    // --- 8. CANVAS MOUSE LISTENERS (Waypoint Logic) ---
+    // --- 9. CANVAS MOUSE LISTENERS (Waypoint Logic) ---
 
     canvas.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -848,6 +934,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         currentFrame.players.push(newPlayer);
         draw();
+        saveState(); // Save this change
     }
 
     // 'click' is ONLY for instantaneous actions
@@ -858,9 +945,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentFrame) return;
         const { x, y } = getMousePos(e);
 
-        // We are NOT drawing a line, so this is a simple click
         if (!appState.isDrawingLine) {
-
             if (appState.activeTool === 'assign-ball') {
                 const clickedPlayer = getPlayerAtCoord(x, y);
                 if (clickedPlayer && clickedPlayer.isOffense) {
@@ -870,20 +955,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     clickedPlayer.hasBall = !clickedPlayer.hasBall;
                     draw();
+                    saveState(); // Save this change
                 }
             } else if (appState.activeTool === 'delete') {
                  const clickedPlayer = getPlayerAtCoord(x, y);
                  if (clickedPlayer) {
                      if (confirm(`Delete player ${clickedPlayer.label}?`)) {
-                        // CRITICAL FIX: Delete player AND connected lines
                         currentFrame.players = currentFrame.players.filter(p => p.id !== clickedPlayer.id);
                         currentFrame.lines = currentFrame.lines.filter(line =>
                             line.startPlayerId !== clickedPlayer.id && line.endPlayerId !== clickedPlayer.id
                         );
                         draw();
+                        saveState(); // Save this change
+                     }
+                 } else {
+                     // NEW: Delete line logic
+                     const clickedLine = getLineAtCoord(x,y);
+                     if (clickedLine) {
+                         if (confirm('Delete this line?')) {
+                             currentFrame.lines = currentFrame.lines.filter(l => l !== clickedLine);
+                             draw();
+                             saveState(); // Save this change
+                         }
                      }
                  }
-                 // TODO: Add logic to delete lines by clicking
             }
         }
     });
@@ -905,13 +1000,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     appState.draggingPlayer = playerAtStart;
                     appState.dragOffsetX = x - playerAtStart.x;
                     appState.dragOffsetY = y - playerAtStart.y;
-                    canvas.classList.add('tool-select:active'); // For 'grabbing' cursor
+                    canvas.classList.add('tool-select:active');
                     e.preventDefault();
                 }
             } else if (appState.activeTool !== 'player' && appState.activeTool !== 'assign-ball' && appState.activeTool !== 'delete') {
-                // It's an action tool (cut, pass, etc.)
                 if (!appState.isDrawingLine) {
-                    // START a new line
                     if (playerAtStart) {
                         appState.isDrawingLine = true;
                         appState.previewLine = {
@@ -923,7 +1016,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         e.preventDefault();
                     }
                 } else {
-                    // FINISH a line (finalize)
                     appState.isDrawingLine = false;
                     const finalLine = appState.previewLine;
                     const finalPoint = { x, y };
@@ -932,7 +1024,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (playerAtEnd) {
                         finalPoint.x = playerAtEnd.x;
                         finalPoint.y = playerAtEnd.y;
-                        finalLine.endPlayerId = playerAtEnd.id; // Store the end player ID
+                        finalLine.endPlayerId = playerAtEnd.id;
                     }
 
                     finalLine.points[finalLine.points.length - 1] = finalPoint;
@@ -941,13 +1033,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     instructionText.textContent = `Line created. Click another player to start a new line.`;
                     e.preventDefault();
                     draw();
+                    saveState(); // Save this change
                 }
             }
         // --- RIGHT CLICK (for waypoints) ---
         } else if (e.button === 2) {
             if (appState.isDrawingLine) {
-                // Add a waypoint
-                appState.previewLine.points.push({ x, y }); // Add new point
+                appState.previewLine.points.push({ x, y });
                 instructionText.textContent = `Waypoint added. Right-click for another, left-click to finish.`;
                 e.preventDefault();
                 draw();
@@ -966,7 +1058,6 @@ document.addEventListener('DOMContentLoaded', () => {
             draw();
         } else if (appState.isDrawingLine) {
             const { x, y } = getMousePos(e);
-            // Always update the *last* point in the array
             appState.previewLine.points[appState.previewLine.points.length - 1] = { x, y };
             draw();
         }
@@ -980,15 +1071,16 @@ document.addEventListener('DOMContentLoaded', () => {
             appState.isDragging = false;
             appState.draggingPlayer = null;
             canvas.classList.remove('tool-select:active');
+            saveState(); // Save this change
         }
     });
 
     canvas.addEventListener('mouseout', (e) => {
-        // Cancel any action if mouse leaves canvas
         if (appState.isDragging) {
             appState.isDragging = false;
             appState.draggingPlayer = null;
             draw();
+            saveState(); // Save this change
         }
         if (appState.isDrawingLine) {
             appState.isDrawingLine = false;
@@ -998,18 +1090,16 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.classList.remove('drag-over');
     });
 
-    // --- 9. CANVAS DRAG & DROP (for players) ---
+    // --- 10. CANVAS DRAG & DROP (for players) ---
 
-    // NEW: Add drag listeners to the new icons
     playerToolIcons.forEach(icon => {
         icon.addEventListener('dragstart', (e) => {
             if (appState.isAnimating || appState.isExporting) {
                 e.preventDefault();
                 return;
             }
-            // Set the active tool in the state
             appState.activeTool = 'player';
-            canvas.classList.add('tool-player'); // Set cursor
+            canvas.classList.add('tool-player');
 
             e.dataTransfer.setData('text/plain', icon.dataset.player);
             e.dataTransfer.effectAllowed = 'copy';
@@ -1019,7 +1109,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         icon.addEventListener('dragend', (e) => {
             icon.classList.remove('dragging');
-            // Revert tool back to 'select' for safety
             document.querySelector('.tool-btn[data-tool="select"]').click();
         });
     });
@@ -1027,7 +1116,6 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('dragover', (e) => {
         e.preventDefault();
         const tool = appState.activeTool;
-        // Only allow drop if a 'player' button was the drag source
         if (tool === 'player') {
             canvas.classList.add('drag-over');
             e.dataTransfer.dropEffect = 'copy';
@@ -1046,18 +1134,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const playerLabel = e.dataTransfer.getData('text/plain');
 
-        // Final check: was this a player drop?
         if (playerLabel && appState.activeTool === 'player') {
             const { x, y } = getMousePos(e);
-            createPlayerAt(x, y, playerLabel);
-
-            // Revert tool back to 'select'
+            createPlayerAt(x, y, playerLabel); // This function now calls saveState()
             document.querySelector('.tool-btn[data-tool="select"]').click();
         }
     });
 
 
-    // --- 10. INITIALIZE ---
+    // --- 11. INITIALIZE ---
     halfCourtImg.onload = () => {
         renderFrameList();
         draw();
@@ -1069,9 +1154,7 @@ document.addEventListener('DOMContentLoaded', () => {
     halfCourtImg.onerror = () => alert("Error: Could not load 'halfcourt.webp'. Make sure it's in the 'images' folder.");
     fullCourtImg.onerror = () => alert("Error: Could not load 'fullcourt.webp'. Make sure it's in the 'images' folder.");
 
-    // NEW: Draw the toolbox icons on load
     initializeToolboxIcons();
-    // Set initial tool state
     document.querySelector('.tool-btn[data-tool="select"]').click();
-
+    updateHistoryButtons(); // Initialize button state
 });
