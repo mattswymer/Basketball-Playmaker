@@ -2,12 +2,15 @@
  * Basketball Playmaker Pro - Master Version
  * - [FIXED] Implemented missing createPlayerAt function to resolve drag-drop bug.
  * - [FIXED] Removed critical syntax error (stray 's') that broke script execution.
+ * - [FIXED] Corrected dribble line algorithm (Bug 1/3)
+ * - [FIXED] Centered radial menu on player icon (Bug 2/3)
+ * - [FIXED] Restored double arrowhead for shoot line (Bug 3/3)
  * - Radial menu drag-friendly behavior (no early stop)
  * - Robust double-click finalization (no stray waypoints)
  * - Arrow-safe end snapping (arrow visible)
  * - Line highlight on selection (and on hover)
  * - Tooltips with shortcuts on wheel buttons
- * @version 3.2.2
+ * @version 3.2.3
  */
 'use strict';
 
@@ -408,6 +411,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     ctx.stroke();
   }
 
+  /**
+   * [FIX] Corrected algorithm to apply perpendicular sinusoidal offset to a linear path.
+   */
   function drawDribbleLine(start, end) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
@@ -422,13 +428,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
     for (let i = 1; i <= segments; i++) {
-      const t = i / 5;
-      const x = start.x + dx * t;
-      const y = start.y + Math.sin(t * Math.PI * frequency) * amplitude;
+      const t = i / segments; // [FIX] Was i / 5
+      const x_linear = start.x + dx * t;
+      const y_linear = start.y + dy * t;
+      
       const offset = Math.sin(t * Math.PI * frequency) * amplitude;
       const offsetX = Math.sin(angle) * offset;
       const offsetY = -Math.cos(angle) * offset;
-      ctx.lineTo(x + offsetX, y + offsetY);
+      
+      ctx.lineTo(x_linear + offsetX, y_linear + offsetY); // [FIX] Apply offset to linear point
     }
     ctx.lineTo(end.x, end.y);
     ctx.stroke();
@@ -486,18 +494,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (type === 'shoot') {
           const angle = Math.atan2(originalEnd.y - start.y, originalEnd.x - start.x);
           const offset = CONFIG.line.shootLineOffset;
+          // [FIX] Define both endpoints for arrowheads
+          const end1 = { x: end.x + Math.sin(angle) * offset, y: end.y - Math.cos(angle) * offset };
+          const end2 = { x: end.x - Math.sin(angle) * offset, y: end.y + Math.cos(angle) * offset };
+
           ctx.setLineDash([]);
           ctx.beginPath();
           ctx.moveTo(start.x + Math.sin(angle) * offset, start.y - Math.cos(angle) * offset);
-          ctx.lineTo(end.x + Math.sin(angle) * offset, end.y - Math.cos(angle) * offset);
+          ctx.lineTo(end1.x, end1.y);
           ctx.stroke();
 
           ctx.beginPath();
           ctx.moveTo(start.x - Math.sin(angle) * offset, start.y + Math.cos(angle) * offset);
-          ctx.lineTo(end.x - Math.sin(angle) * offset, end.y + Math.cos(angle) * offset);
+          ctx.lineTo(end2.x, end2.y);
           ctx.stroke();
 
-          drawArrowhead({ x: end.x - Math.sin(angle) * offset, y: end.y + Math.cos(angle) * offset }, angle);
+          drawArrowhead(end1, angle); // [FIX] Draw first arrowhead
+          drawArrowhead(end2, angle); // [FIX] Draw second arrowhead
           continue;
         }
 
@@ -675,15 +688,38 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ============================================================================
   // RADIAL ACTION WHEEL
   // ============================================================================
+  /**
+   * [FIX] Centers the wheel on the player icon, not the mouse cursor.
+   */
   function showActionWheel(player, viewportX, viewportY) {
     appState.selectedPlayerId = player.id;
+
+    // Get positions of canvas and its container
     const courtRect = DOM.courtContainer.getBoundingClientRect();
-    const x = viewportX - courtRect.left - (DOM.actionWheel.offsetWidth / 2);
-    const y = viewportY - courtRect.top - (DOM.actionWheel.offsetHeight / 2);
-    DOM.actionWheel.style.left = `${x}px`;
-    DOM.actionWheel.style.top = `${y}px`;
+    const canvasRect = DOM.canvas.getBoundingClientRect();
+
+    // Calculate canvas offset *within* the container
+    const canvasLeftInContainer = canvasRect.left - courtRect.left;
+    const canvasTopInContainer = canvasRect.top - courtRect.top;
+
+    // Calculate player's center position *relative to the container*
+    const playerXInContainer = canvasLeftInContainer + player.x;
+    const playerYInContainer = canvasTopInContainer + player.y;
+
+    // Make visible *before* measuring to ensure offsetWidth/Height are correct
     DOM.actionWheel.classList.remove('hidden');
     DOM.actionWheel.classList.add('visible');
+
+    const wheelWidth = DOM.actionWheel.offsetWidth;
+    const wheelHeight = DOM.actionWheel.offsetHeight;
+
+    // Calculate wheel's top-left to center it on the player
+    const x = playerXInContainer - (wheelWidth / 2);
+    const y = playerYInContainer - (wheelHeight / 2);
+
+    DOM.actionWheel.style.left = `${x}px`;
+    DOM.actionWheel.style.top = `${y}px`;
+
     setInstruction('Select an action from the wheel • Drag to move; release to re‑open actions');
   }
   function hideActionWheel() {
@@ -1354,6 +1390,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const dist = Math.hypot(x - appState.dragStartX, y - appState.dragStartY);
       if (dist < CONFIG.interaction.clickTolerance) {
+        // [FIX] Pass viewportX/Y so wheel can center on mouse if needed,
+        // but showActionWheel will prioritize player coords.
         showActionWheel(draggedPlayer, viewportX, viewportY);
       } else {
         saveState();
@@ -1426,6 +1464,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (newPlayer) {
         draw();
         saveState();
+        // [FIX] Pass viewportX/Y for centering
         showActionWheel(newPlayer, viewportX, viewportY);
       }
     }
@@ -1694,6 +1733,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   draw();
   setInstruction('Drag a player onto the court to begin');
   updateHistoryButtons();
-  console.log('✅ Basketball Playmaker Pro (Master 3.2.2) initialized');
+  console.log('✅ Basketball Playmaker Pro (Master 3.2.3) initialized');
 });
 
