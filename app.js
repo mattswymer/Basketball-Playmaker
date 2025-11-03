@@ -1240,23 +1240,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     saveState();
   }
 
-  // ----- Line drawing helpers (debounced waypoint vs. double-click) -----
-  function queueAddWaypoint(x, y) {
-    clearTimeout(appState.clickTimerId);
-    appState.clickTimerId = setTimeout(() => {
-      const playerAtWaypoint = getPlayerAtCoord(x, y);
-      appState.previewLine.points.push(
-        playerAtWaypoint ? { x: playerAtWaypoint.x, y: playerAtWaypoint.y } : { x, y }
-      );
-      draw();
-      appState.clickTimerId = null;
-    }, CONFIG.interaction.doubleClickTime);
+// ----- Line drawing helpers (debounced waypoint vs. double-click) -----
+  function addWaypoint(x, y) {
+    const playerAtWaypoint = getPlayerAtCoord(x, y);
+    const newPoint = playerAtWaypoint ? { x: playerAtWaypoint.x, y: playerAtWaypoint.y } : { x, y };
+    
+    appState.previewLine.points.splice(appState.previewLine.points.length - 1, 0, newPoint);
+    
+    draw();
   }
 
-  function finalizePreviewLine(x, y) {
-    clearTimeout(appState.clickTimerId);
-    appState.clickTimerId = null;
-
+function finalizePreviewLine(x, y) {
     appState.isDrawingLine = false;
     const finalLine = appState.previewLine;
     finalLine.points.pop(); // remove trailing preview point
@@ -1283,13 +1277,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   function handleCanvasPointerDown(x, y, viewportX, viewportY, e) {
     if (appState.isAnimating || appState.isExporting) return;
 
-    if (appState.isDrawingLine) {
+if (appState.isDrawingLine) {
       const now = Date.now();
       if (now - appState.lastClickTime < CONFIG.interaction.doubleClickTime) {
         e.preventDefault();
         finalizePreviewLine(x, y);
       } else {
-        queueAddWaypoint(x, y);
+        addWaypoint(x, y);
       }
       appState.lastClickTime = now;
       return;
@@ -1726,3 +1720,4 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateHistoryButtons();
   console.log('✅ Basketball Playmaker Pro (Master 3.2.4) initialized');
 });
+
