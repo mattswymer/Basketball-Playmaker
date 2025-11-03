@@ -383,8 +383,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     ctx.stroke();
   }
 
-  function drawArrowhead(end, angle) {
+function drawArrowhead(end, angle) {
     const L = CONFIG.line.arrowLength;
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(end.x, end.y);
     ctx.lineTo(end.x - L * Math.cos(angle - Math.PI / 6), end.y - L * Math.sin(angle - Math.PI / 6));
@@ -1253,14 +1254,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 function finalizePreviewLine(x, y) {
     appState.isDrawingLine = false;
     const finalLine = appState.previewLine;
-    finalLine.points.pop(); // remove trailing preview point
+    finalLine.points.pop(); 
 
     const playerAtEnd = getPlayerAtCoord(x, y);
+    const finalPoint = playerAtEnd ? { x: playerAtEnd.x, y: playerAtEnd.y } : { x, y };
+
+    if (finalLine.points.length > 1) {
+      const lastWaypoint = finalLine.points[finalLine.points.length - 1];
+      const dist = Math.hypot(finalPoint.x - lastWaypoint.x, finalPoint.y - lastWaypoint.y);
+      if (dist < CONFIG.interaction.clickTolerance) {
+        finalLine.points.pop();
+      }
+    }
+
     if (playerAtEnd) {
-      finalLine.points.push({ x: playerAtEnd.x, y: playerAtEnd.y });
+      finalLine.points.push(finalPoint);
       finalLine.endPlayerId = playerAtEnd.id;
     } else {
-      finalLine.points.push({ x, y });
+      finalLine.points.push(finalPoint);
     }
 
     if (finalLine.points.length >= 2) {
@@ -1720,4 +1731,5 @@ if (appState.isDrawingLine) {
   updateHistoryButtons();
   console.log('✅ Basketball Playmaker Pro (Master 3.2.4) initialized');
 });
+
 
