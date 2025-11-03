@@ -5,12 +5,14 @@
  * - [FIXED] Corrected dribble line algorithm (Bug 1/3)
  * - [FIXED] Centered radial menu on player icon (Bug 2/3)
  * - [FIXED] Restored double arrowhead for shoot line (Bug 3/3)
+ * - [FIXED] Perfected radial menu show/hide logic for drag vs. click (Bug 1/2)
+ * - [FIXED] Removed redundant blue selection highlight (Bug 2/2)
  * - Radial menu drag-friendly behavior (no early stop)
  * - Robust double-click finalization (no stray waypoints)
  * - Arrow-safe end snapping (arrow visible)
  * - Line highlight on selection (and on hover)
  * - Tooltips with shortcuts on wheel buttons
- * @version 3.2.3
+ * @version 3.2.4
  */
 'use strict';
 
@@ -136,7 +138,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       draggingPlayer: null,
       dragStartX: 0, dragStartY: 0,
       dragOffsetX: 0, dragOffsetY: 0,
-      wasWheelVisibleBeforeDrag: false,
+      // wasWheelVisibleBeforeDrag: false, // [FIX] This state is no longer needed
 
       // drawing interaction
       isDrawingLine: false,
@@ -337,18 +339,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function drawPlayerAt(player, x, y, hasBall) {
-    // highlight selected player when the wheel is visible for them
-    if (appState.selectedPlayerId === player.id && DOM.actionWheel.classList.contains('visible')) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, player.radius + 8, 0, 2 * Math.PI);
-      ctx.strokeStyle = 'rgba(52,152,219,0.55)';
-      ctx.lineWidth = 4;
-      ctx.shadowColor = 'rgba(52,152,219,0.6)';
-      ctx.shadowBlur = 12;
-      ctx.stroke();
-      ctx.restore();
-    }
+    // [FIX] Removed redundant blue highlight circle (Bug 2/2).
+    // The radial menu is now the only selection indicator.
 
     ctx.beginPath();
     ctx.arc(x, y, player.radius, 0, 2 * Math.PI);
@@ -733,7 +725,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   // Immediate hide (used on drag start)
   function hideActionWheelImmediate() {
-    appState.selectedPlayerId = null;
+    // [FIX] Do not set selectedPlayerId to null here, only hide the DOM element
+    // appState.selectedPlayerId = null;
     DOM.actionWheel.classList.remove('visible');
     DOM.actionWheel.classList.add('hidden');
   }
@@ -751,6 +744,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentFrame.lines = currentFrame.lines.filter(line =>
         line.startPlayerId !== player.id && line.endPlayerId !== player.id
       );
+      appState.selectedPlayerId = null; // [FIX] Deselect after delete
       draw();
       saveState();
       setInstruction('Player deleted');
@@ -1339,11 +1333,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       appState.dragOffsetX = x - playerAtStart.x;
       appState.dragOffsetY = y - playerAtStart.y;
 
-      appState.wasWheelVisibleBeforeDrag =
-        DOM.actionWheel.classList.contains('visible') &&
-        appState.selectedPlayerId === playerAtStart.id;
-
-      // Ensure the wheel cannot interfere with hit-testing during drag
+      // [FIX] Set selected player, hide wheel *during* drag
+      appState.selectedPlayerId = playerAtStart.id;
       hideActionWheelImmediate();
 
       // Attach document-level listeners to keep drag smooth beyond canvas bounds
@@ -1352,7 +1343,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       e.preventDefault();
     } else {
+      // [FIX] Clicked on empty canvas, deselect player and hide wheel
+      appState.selectedPlayerId = null;
       hideActionWheel();
+      scheduleDraw(); // Redraw to remove old highlight (if any)
     }
   }
 
@@ -1389,17 +1383,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       appState.draggingPlayer = null;
 
       const dist = Math.hypot(x - appState.dragStartX, y - appState.dragStartY);
-      if (dist < CONFIG.interaction.clickTolerance) {
-        // [FIX] Pass viewportX/Y so wheel can center on mouse if needed,
-        // but showActionWheel will prioritize player coords.
-        showActionWheel(draggedPlayer, viewportX, viewportY);
-      } else {
+      if (dist >= CONFIG.interaction.clickTolerance) {
+        // Only save state if it was a drag, not a click
         saveState();
-        if (appState.wasWheelVisibleBeforeDrag) {
-          showActionWheel(draggedPlayer, viewportX, viewportY);
-        }
       }
-      appState.wasWheelVisibleBeforeDrag = false;
+      
+      // [FIX] Always show the wheel on mouse up if we were dragging/clicking a player
+      showActionWheel(draggedPlayer, viewportX, viewportY);
+      scheduleDraw(); // Redraw
 
       // Remove document-level listeners
       document.removeEventListener('mousemove', onDocumentMouseMove);
@@ -1733,6 +1724,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   draw();
   setInstruction('Drag a player onto the court to begin');
   updateHistoryButtons();
-  console.log('✅ Basketball Playmaker Pro (Master 3.2.3) initialized');
+  console.log('✅ Basketball Playmaker Pro (Master 3.2.4) initialized');
 });
-
