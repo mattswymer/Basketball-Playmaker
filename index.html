@@ -2,48 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Basketball Playmaker Pro - Professional basketball play diagramming and animation tool for coaches and players" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="description" content="Basketball Playmaker Pro - Professional basketball play diagramming with radial menu interface" />
   <meta name="theme-color" content="#1a1a1a" />
-  <meta name="author" content="Basketball Playmaker Pro" />
-
-  <!-- Open Graph / Social Media -->
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Basketball Playmaker Pro" />
-  <meta property="og:description" content="Professional basketball play diagramming and animation tool" />
 
   <title>Basketball Playmaker Pro</title>
 
-  <!-- DNS Prefetch for Performance -->
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
-  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
-
-  <!-- Critical CSS -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- External Dependencies - Loaded with Proper Strategy -->
-  <script
-    src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
-    crossorigin="anonymous"
-    defer>
-  </script>
-  <script
-    src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.4.1/gifshot.min.js"
-    crossorigin="anonymous"
-    defer>
-  </script>
+  <!-- External Dependencies -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.4.1/gifshot.min.js" crossorigin="anonymous" defer></script>
 
-  <!-- Application Logic - Must Load After Dependencies -->
+  <!-- Application Logic -->
   <script src="app.js" defer></script>
 </head>
-
 <body>
   <div id="app-container">
 
-    <!-- Main Toolbar -->
+    <!-- Top Toolbar -->
     <nav id="top-toolbar" role="navigation" aria-label="Main toolbar">
-
-      <!-- Play Configuration Section -->
       <div class="toolbar-section">
         <label for="play-name">Play Name:</label>
         <input
@@ -59,7 +37,6 @@
         </select>
       </div>
 
-      <!-- Action Buttons Section -->
       <div class="toolbar-section">
         <button
           id="new-play"
@@ -71,7 +48,7 @@
         <button
           id="undo-btn"
           class="btn btn-primary"
-          title="Undo last action (Ctrl+Z)"
+          title="Undo (Ctrl+Z)"
           aria-label="Undo last action"
           disabled>
           ↶ Undo
@@ -79,7 +56,7 @@
         <button
           id="redo-btn"
           class="btn btn-primary"
-          title="Redo last undone action (Ctrl+Y)"
+          title="Redo (Ctrl+Y)"
           aria-label="Redo last undone action"
           disabled>
           ↷ Redo
@@ -93,7 +70,6 @@
         </button>
       </div>
 
-      <!-- Playback Controls Section -->
       <div class="toolbar-section">
         <button
           id="animate-play"
@@ -103,7 +79,6 @@
         </button>
       </div>
 
-      <!-- File Operations Section -->
       <div class="toolbar-section">
         <button
           id="save-play"
@@ -125,7 +100,6 @@
           aria-label="Select play file to load" />
       </div>
 
-      <!-- Export Options Section -->
       <div class="toolbar-section">
         <button
           id="export-video-btn"
@@ -144,7 +118,7 @@
 
     <!-- Instruction Bar -->
     <div id="instruction-bar" role="status" aria-live="polite">
-      <span id="instruction-text">Select a tool to begin</span>
+      <span id="instruction-text">Drag a player onto the court to begin</span>
     </div>
 
     <!-- Main Application Area -->
@@ -189,31 +163,23 @@
           role="img"
           aria-label="Basketball play diagram">
         </canvas>
+
+        <!-- Radial Action Menu (positioned by JavaScript) -->
+        <div id="action-wheel" class="hidden" role="menu" aria-label="Player actions">
+          <div class="wheel-button" id="wheel-cut" data-tool="cut" role="menuitem" aria-label="Move / Cut" title="Move / Cut (M)"></div>
+          <div class="wheel-button" id="wheel-pass" data-tool="pass" role="menuitem" aria-label="Pass" title="Pass (P)"></div>
+          <div class="wheel-button" id="wheel-screen" data-tool="screen" role="menuitem" aria-label="Screen" title="Screen (S)"></div>
+          <div class="wheel-button" id="wheel-delete" data-tool="delete" role="menuitem" aria-label="Delete Player" title="Delete (Del)"></div>
+          <div class="wheel-button" id="wheel-ball" data-tool="assign-ball" role="menuitem" aria-label="Assign Ball" title="Assign Ball (B)"></div>
+          <div class="wheel-button" id="wheel-shoot" data-tool="shoot" role="menuitem" aria-label="Shoot" title="Shoot (X)"></div>
+          <div class="wheel-button" id="wheel-dribble" data-tool="dribble" role="menuitem" aria-label="Dribble" title="Dribble (D)"></div>
+        </div>
       </div>
 
-      <!-- Drawing Tools Panel -->
-      <aside id="drawing-toolbox" role="complementary" aria-label="Drawing tools">
-        <h3>🛠️ Tools</h3>
+      <!-- Player Toolbox Panel -->
+      <aside id="drawing-toolbox" role="complementary" aria-label="Player selection">
+        <h3>🛠️ Players</h3>
 
-        <!-- Selection Tools -->
-        <div class="tool-group" role="group" aria-label="Selection tools">
-          <button
-            class="tool-btn active"
-            data-tool="select"
-            aria-label="Select and move player tool"
-            aria-pressed="true">
-            🖱️ Move Player
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="delete"
-            aria-label="Delete item tool"
-            aria-pressed="false">
-            🗑️ Delete Item
-          </button>
-        </div>
-
-        <!-- Offensive Players -->
         <h4>Offense</h4>
         <div
           class="player-palette"
@@ -262,7 +228,6 @@
           </canvas>
         </div>
 
-        <!-- Defensive Players -->
         <h4>Defense</h4>
         <div
           class="player-palette"
@@ -311,58 +276,15 @@
           </canvas>
         </div>
 
-        <!-- Action Tools -->
-        <h4>Actions</h4>
-        <div class="tool-group" role="group" aria-label="Action tools">
-          <button
-            class="tool-btn"
-            data-tool="assign-ball"
-            aria-label="Assign basketball to player"
-            aria-pressed="false">
-            🏀 Assign Ball
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="cut"
-            aria-label="Draw cutting movement"
-            aria-pressed="false">
-            ✂️ Cut
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="dribble"
-            aria-label="Draw dribbling movement"
-            aria-pressed="false">
-            ⚡ Dribble
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="pass"
-            aria-label="Draw passing action"
-            aria-pressed="false">
-            🎯 Pass
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="screen"
-            aria-label="Draw screening action"
-            aria-pressed="false">
-            🛡️ Screen
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="shoot"
-            aria-label="Draw shooting action"
-            aria-pressed="false">
-            🏹 Shoot
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="move"
-            aria-label="Draw defensive movement"
-            aria-pressed="false">
-            👟 Move (Defense)
-          </button>
+        <!-- Help Section -->
+        <div class="help-section">
+          <h4>💡 Quick Tips</h4>
+          <ul>
+            <li>Drag players to court</li>
+            <li>Click player for actions</li>
+            <li>Double-click to finish line</li>
+            <li>Click line to delete it</li>
+          </ul>
         </div>
       </aside>
     </main>
