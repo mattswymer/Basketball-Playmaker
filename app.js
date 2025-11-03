@@ -1,12 +1,12 @@
-
 /**
  * Basketball Playmaker Pro - Master Version
+ * - [FIXED] Implemented missing createPlayerAt function to resolve drag-drop bug.
  * - Radial menu drag-friendly behavior (no early stop)
  * - Robust double-click finalization (no stray waypoints)
  * - Arrow-safe end snapping (arrow visible)
  * - Line highlight on selection (and on hover)
  * - Tooltips with shortcuts on wheel buttons
- * @version 3.2.0
+ * @version 3.2.1
  */
 'use strict';
 
@@ -504,14 +504,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (type === 'pass') ctx.setLineDash(CONFIG.line.passLineDash);
         else ctx.setLineDash([]);
 
-        ctx.beginPath();
-        ctx.moveTo(start.x, start.y);
-        ctx.lineTo(end.x, end.y);
-        ctx.stroke();
+        if (type === 'dribble') {
+          // Note: drawDribbleLine handles its own beginPath, stroke, and arrowhead
+          drawDribbleLine(start, end);
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(start.x, start.y);
+          ctx.lineTo(end.x, end.y);
+          ctx.stroke();
+        }
         ctx.setLineDash([]);
 
-        // Endpoint indicator for final segment
-        if (i === points.length - 2) {
+        // Endpoint indicator for final segment (skip for dribble as it's handled)
+        if (i === points.length - 2 && type !== 'dribble') {
           const angle = Math.atan2(originalEnd.y - start.y, originalEnd.x - start.x);
           if (type === 'screen') drawScreenEnd(end, angle);
           else drawArrowhead(end, angle);
@@ -825,7 +830,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('File read error:', reader.error);
       showAlert('Error reading file.');
     };
-    reader.readAsText(file);
+    reader.readText(file);
   }
 
   async function handleExportPDF() {
@@ -1059,9 +1064,49 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ============================================================================
   // EVENT HANDLERS
   // ============================================================================
+
+  /**
+   * [BUG FIX] Creates a new player object and adds it to the current frame.
+   * This function was missing, causing drag-and-drop to fail.
+   * @param {number} x - The canvas x-coordinate.
+   * @param {number} y - The canvas y-coordinate.
+   * @param {string} playerLabel - The label for the new player (e.g., "1", "X1").
+   * @returns {object|null} The newly created player object, or null if player exists.
+   */
+  function createPlayerAt(x, y, playerLabel) {
+    const currentFrame = appState.frames[appState.currentFrameIndex];
+    if (!currentFrame) return null;
+
+    // Prevent duplicate players in the same frame
+    const playerExists = currentFrame.players.some(p => p.label === playerLabel);
+    if (playerExists) {
+      showAlert(`Player ${playerLabel} is already on the court.`);
+      return null;
+    }
+
+    const newPlayer = {
+      id: appState.nextPlayerId++,
+      label: playerLabel,
+      isOffense: !playerLabel.startsWith('X'),
+      x: x,
+      y: y,
+      radius: CONFIG.player.radius,
+      hasBall: false
+    };
+
+    currentFrame.players.push(newPlayer);
+    return newPlayer;
+  }
+
   function handleNewPlay(confirmFirst = true) {
     if (confirmFirst && appState.frames.some(f => f.players.length > 0 || f.lines.length > 0)) {
-      if (!confirm('Start new play? All unsaved progress will be lost.')) {
+      // Use custom alert/confirm modal if available, fallback to browser confirm
+      if (typeof showAlert === 'function') {
+         // This app uses `confirm` directly, so we'll stick to that for consistency.
+         if (!confirm('Start new play? All unsaved progress will be lost.')) {
+           return;
+         }
+      } else if (!confirm('Start new play? All unsaved progress will be lost.')) {
         return;
       }
     }
@@ -1128,7 +1173,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       showAlert('You cannot delete the last frame.');
       return;
     }
-    if (!confirm('Delete this frame?')) return;
+    // Use custom alert/confirm modal if available, fallback to browser confirm
+    if (typeof showAlert === 'function') {
+        // This app uses `confirm` directly, so we'll stick to that for consistency.
+        if (!confirm('Delete this frame?')) return;
+    } else if (!confirm('Delete this frame?')) {
+      return;
+    }
 
     const deletedFrameIndex = appState.currentFrameIndex;
     appState.frames.splice(deletedFrameIndex, 1);
@@ -1139,7 +1190,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function handleClearFrame() {
     if (appState.isAnimating || appState.isExporting) return;
-    if (!confirm('Clear all players and lines from this frame?')) return;
+    // Use custom alert/confirm modal if available, fallback to browser confirm
+    if (typeof showAlert === 'function') {
+        // This app uses `confirm` directly, so we'll stick to that for consistency.
+        if (!confirm('Clear all players and lines from this frame?')) return;
+    } else if (!confirm('Clear all players and lines from this frame?')) {
+      return;
+    }
+
     const currentFrame = appState.frames[appState.currentFrameIndex];
     if (currentFrame) {
       currentFrame.players = [];
@@ -1211,7 +1269,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Highlight before confirmation
       appState.selectedLineId = clickedLine.id;
       draw();
-      if (confirm('Delete this action line?')) {
+      
+      // Use custom alert/confirm modal if available, fallback to browser confirm
+      let deleteConfirmed = false;
+      if (typeof showAlert === 'function') {
+          // This app uses `confirm` directly, so we'll stick to that for consistency.
+          deleteConfirmed = confirm('Delete this action line?');
+      } else {
+          deleteConfirmed = confirm('Delete this action line?');
+      }
+
+      if (deleteConfirmed) {
         const currentFrame = appState.frames[appState.currentFrameIndex];
         currentFrame.lines = currentFrame.lines.filter(l => l.id !== clickedLine.id);
         appState.selectedLineId = null;
@@ -1352,6 +1420,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const playerLabel = e.dataTransfer.getData('text/plain');
     if (playerLabel) {
       const { x, y, viewportX, viewportY } = getMousePos(e);
+      // [FIX] This function was missing, now it is defined above handleNewPlay
       const newPlayer = createPlayerAt(x, y, playerLabel);
       if (newPlayer) {
         draw();
@@ -1449,6 +1518,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     e.target.value = null;
   });
 
+s
   DOM.animateBtn.addEventListener('click', () => {
     if (appState.isExporting) return;
     if (appState.isAnimating) {
@@ -1623,6 +1693,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   draw();
   setInstruction('Drag a player onto the court to begin');
   updateHistoryButtons();
-  console.log('✅ Basketball Playmaker Pro (Master 3.2.0) initialized');
+  console.log('✅ Basketball Playmaker Pro (Master 3.2.1) initialized');
 });
-``
