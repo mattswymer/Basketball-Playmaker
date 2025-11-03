@@ -1,12 +1,13 @@
 /**
  * Basketball Playmaker Pro - Master Version
  * - [FIXED] Implemented missing createPlayerAt function to resolve drag-drop bug.
+ * - [FIXED] Removed critical syntax error (stray 's') that broke script execution.
  * - Radial menu drag-friendly behavior (no early stop)
  * - Robust double-click finalization (no stray waypoints)
  * - Arrow-safe end snapping (arrow visible)
  * - Line highlight on selection (and on hover)
  * - Tooltips with shortcuts on wheel buttons
- * @version 3.2.1
+ * @version 3.2.2
  */
 'use strict';
 
@@ -421,9 +422,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
     for (let i = 1; i <= segments; i++) {
-      const t = i / segments;
+      const t = i / 5;
       const x = start.x + dx * t;
-      const y = start.y + dy * t;
+      const y = start.y + Math.sin(t * Math.PI * frequency) * amplitude;
       const offset = Math.sin(t * Math.PI * frequency) * amplitude;
       const offsetX = Math.sin(angle) * offset;
       const offsetY = -Math.cos(angle) * offset;
@@ -1518,7 +1519,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     e.target.value = null;
   });
 
-s
+  // [FIX] Removed stray 's' character that was causing a SyntaxError
   DOM.animateBtn.addEventListener('click', () => {
     if (appState.isExporting) return;
     if (appState.isAnimating) {
@@ -1693,5 +1694,6 @@ s
   draw();
   setInstruction('Drag a player onto the court to begin');
   updateHistoryButtons();
-  console.log('✅ Basketball Playmaker Pro (Master 3.2.1) initialized');
+  console.log('✅ Basketball Playmaker Pro (Master 3.2.2) initialized');
 });
+
