@@ -732,13 +732,12 @@ function drawArrowhead(end, angle) {
     DOM.actionWheel.classList.add('hidden');
   }
 
-  function handleWheelAction(tool) {
+function handleWheelAction(tool) {
     const currentFrame = appState.frames[appState.currentFrameIndex];
     const player = currentFrame.players.find(p => p.id === appState.selectedPlayerId);
     if (!player) return;
 
-    // hide immediately to avoid blocking subsequent interactions
-    DOM.actionWheel.classList.remove('visible');
+    hideActionWheelImmediate();
 
     if (tool === 'delete') {
       currentFrame.players = currentFrame.players.filter(p => p.id !== player.id);
@@ -1731,5 +1730,6 @@ if (appState.isDrawingLine) {
   updateHistoryButtons();
   console.log('✅ Basketball Playmaker Pro (Master 3.2.4) initialized');
 });
+
 
 
