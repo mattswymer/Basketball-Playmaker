@@ -516,7 +516,7 @@ body {
 .spinner {
   width: 2.5rem;
   height: 2.5rem;
-  border: 0.3125rem solid #f3f3f3;
+  border: 0.3125rem solid #f3f3ff;
   border-top: 0.3125rem solid var(--color-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -542,10 +542,22 @@ body {
     border-bottom: 1px solid var(--color-border);
   }
   #court-container { order: 1; min-height: 25rem; }
-  #frame-panel { order: 0; max-height: 15rem; }
-  #drawing-toolbox { order: 2; }
-  /* Larger touch targets on mobile */
-  .wheel-button { width: 3.5rem; height: 3.5rem; }
+
+  /* [FIX] Removed max-height from frame-panel and set explicit heights for list/notes */
+  #frame-panel {
+    order: 0;
+    /* max-height: 15rem; <-- REMOVED */
+  }
+  #frame-list {
+    min-height: 10rem; /* Was 12.5rem, conflicting with panel max-height */
+    height: 10rem; /* Added explicit height */
+  }
+  #frame-notes {
+    height: 8rem; /* Was 7.5rem, gave more space */
+  }
+
+  /* [FIX] Removed rule that enlarged buttons on tablet */
+  /* .wheel-button { width: 3.5rem; height: 3.5rem; } <-- REMOVED */
   .player-tool-icon { width: 3rem; height: 3rem; }
 }
 @media (max-width: 768px) {
@@ -576,6 +588,31 @@ body {
     padding-bottom: 0;
   }
   .btn { flex: 1 1 auto; }
+
+  /* [FIX] Scale down radial menu on small screens */
+  #action-wheel {
+    width: 8rem; /* 10rem */
+    height: 8rem; /* 10rem */
+  }
+  .wheel-button {
+    width: 2.5rem; /* 3rem */
+    height: 2.5rem; /* 3rem */
+    left: 2.75rem; /* 3.5rem */
+    top: 2.75rem; /* 3.5rem */
+  }
+  .wheel-button canvas {
+    width: 2.1rem; /* 2.5rem */
+    height: 2.1rem; /* 2.5rem */
+  }
+
+  /* [FIX] Adjust button translate positions for smaller wheel */
+  #wheel-cut      { transform: translateY(-3.4rem); } /* -4.2rem */
+  #wheel-pass     { transform: translate(2.4rem, -2.4rem); } /* 3rem, -3rem */
+  #wheel-screen   { transform: translateX(3.4rem); } /* 4.2rem */
+  #wheel-delete   { transform: translate(2.4rem, 2.4rem); } /* 3rem, 3rem */
+  #wheel-ball     { transform: translate(-2.4rem, 3rem); } /* -3rem, 3rem */
+  #wheel-shoot    { transform: translateX(-3.4rem); } /* -4.2rem */
+  #wheel-dribble  { transform: translate(-2.4rem, -2.4rem); } /* -3rem, -3rem */
 }
 
 /* ===== PRINT STYLES ===== */
