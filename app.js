@@ -1,13 +1,23 @@
 /**
- * Basketball Playmaker Pro - Master Version 4.0
+ * Basketball Playmaker Pro - Master Version 4.1
  *
  * This application has been refactored into an encapsulated, class-based
  * structure. All application logic, state, and DOM references are managed
-_ * by the `PlaymakerApp` class, eliminating global scope pollution and
+ * by the `PlaymakerApp` class, eliminating global scope pollution and
  * dramatically improving maintainability, readability, and stability.
  *
- * @version 4.0.0
+ * @version 4.1.0
  * @author CodeGuardian
+ *
+ * [CHANGELOG]
+ * - v4.1.0:
+ * - [FIXED] Critical coordinate system mismatch on responsive screens.
+ * - Implemented scaling in `getMousePos` and `getTouchPos` to convert
+ * CSS/Screen coordinates to internal Canvas coordinates.
+ * - Implemented inverse scaling in `showActionWheel` to convert
+ * internal Canvas coordinates to CSS/Screen coordinates.
+ * - This ensures player drop location and radial menu are perfectly
+ * aligned on all devices (desktop and mobile).
  */
 'use strict';
 
@@ -126,7 +136,7 @@ class PlaymakerApp {
     this.draw();
     this.setInstruction('Drag a player onto the court to begin');
     this.updateHistoryButtons();
-    console.log('✅ Basketball Playmaker Pro (Master 4.0) initialized');
+    console.log('✅ Basketball Playmaker Pro (Master 4.1) initialized');
   }
 
   // ==========================================================================
@@ -649,10 +659,21 @@ class PlaymakerApp {
     this.state.selectedPlayerId = player.id;
     const courtRect = this.dom.courtContainer.getBoundingClientRect();
     const canvasRect = this.dom.canvas.getBoundingClientRect();
+
+    // [FIX] Calculate scaling factors
+    const scaleX = canvasRect.width / this.config.canvas.width;
+    const scaleY = canvasRect.height / this.config.canvas.height;
+
     const canvasLeftInContainer = canvasRect.left - courtRect.left;
     const canvasTopInContainer = canvasRect.top - courtRect.top;
-    const playerXInContainer = canvasLeftInContainer + player.x;
-    const playerYInContainer = canvasTopInContainer + player.y;
+
+    // [FIX] Scale player's internal canvas coordinates to CSS coordinates
+    const playerX_css = player.x * scaleX;
+    const playerY_css = player.y * scaleY;
+
+    // [FIX] Position relative to canvas using scaled coordinates
+    const playerXInContainer = canvasLeftInContainer + playerX_css;
+    const playerYInContainer = canvasTopInContainer + playerY_css;
 
     this.dom.actionWheel.classList.remove('hidden');
     this.dom.actionWheel.classList.add('visible');
@@ -774,18 +795,31 @@ class PlaymakerApp {
 
   getMousePos(e) {
     const rect = this.dom.canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top, viewportX: e.clientX, viewportY: e.clientY };
+    // [FIX] Scale CSS coordinates to internal canvas coordinates
+    const scaleX = this.config.canvas.width / rect.width;
+    const scaleY = this.config.canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    return { x: x, y: y, viewportX: e.clientX, viewportY: e.clientY };
   }
 
   getTouchPos(e) {
     const touch = e.touches[0] || e.changedTouches[0];
     const rect = this.dom.canvas.getBoundingClientRect();
-    return { x: touch.clientX - rect.left, y: touch.clientY - rect.top, viewportX: touch.clientX, viewportY: touch.clientY };
+    // [FIX] Scale CSS coordinates to internal canvas coordinates
+    const scaleX = this.config.canvas.width / rect.width;
+    const scaleY = this.config.canvas.height / rect.height;
+    const x = (touch.clientX - rect.left) * scaleX;
+    const y = (touch.clientY - rect.top) * scaleY;
+
+    return { x: x, y: y, viewportX: touch.clientX, viewportY: touch.clientY };
   }
 
   getPlayerAtCoord(x, y) {
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return null;
+    // Check against player's internal canvas coordinates
     for (let i = currentFrame.players.length - 1; i >= 0; i--) {
       const p = currentFrame.players[i];
       if (Math.hypot(x - p.x, y - p.y) < p.radius) return p;
@@ -796,6 +830,7 @@ class PlaymakerApp {
   getLineAtCoord(x, y) {
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return null;
+    // Check against line's internal canvas coordinates
     for (const line of currentFrame.lines) {
       for (let i = 0; i < line.points.length - 1; i++) {
         const p1 = line.points[i];
@@ -1335,11 +1370,9 @@ class PlaymakerApp {
   }
   handleCanvasTouchEnd(e) {
     e.preventDefault();
-    const touch = e.changedTouches[0];
-    const rect = this.dom.canvas.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
-    this.handleCanvasPointerUp(x, y, touch.clientX, touch.clientY);
+    // Use getTouchPos for consistency, reading from changedTouches
+    const { x, y, viewportX, viewportY } = this.getTouchPos(e);
+    this.handleCanvasPointerUp(x, y, viewportX, viewportY);
   }
 
   // --- Robust Drag Handlers ---
@@ -1384,11 +1417,13 @@ class PlaymakerApp {
     this.dom.canvas.classList.remove('drag-over');
     const playerLabel = e.dataTransfer.getData('text/plain');
     if (playerLabel) {
+      // [FIX] Use getMousePos, which is now scaled
       const { x, y, viewportX, viewportY } = this.getMousePos(e);
       const newPlayer = this.createPlayerAt(x, y, playerLabel);
       if (newPlayer) {
         this.draw();
         this.saveState();
+        // [FIX] showActionWheel is now scaled
         this.showActionWheel(newPlayer, viewportX, viewportY);
       }
     }
