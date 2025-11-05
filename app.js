@@ -1,24 +1,3 @@
-/**
- * Basketball Playmaker Pro - Master Version 4.1
- *
- * This application has been refactored into an encapsulated, class-based
- * structure. All application logic, state, and DOM references are managed
- * by the `PlaymakerApp` class, eliminating global scope pollution and
- * dramatically improving maintainability, readability, and stability.
- *
- * @version 4.1.0
- * @author CodeGuardian
- *
- * [CHANGELOG]
- * - v4.1.0:
- * - [FIXED] Critical coordinate system mismatch on responsive screens.
- * - Implemented scaling in `getMousePos` and `getTouchPos` to convert
- * CSS/Screen coordinates to internal Canvas coordinates.
- * - Implemented inverse scaling in `showActionWheel` to convert
- * internal Canvas coordinates to CSS/Screen coordinates.
- * - This ensures player drop location and radial menu are perfectly
- * aligned on all devices (desktop and mobile).
- */
 'use strict';
 
 class PlaymakerApp {
@@ -136,7 +115,7 @@ class PlaymakerApp {
     this.draw();
     this.setInstruction('Drag a player onto the court to begin');
     this.updateHistoryButtons();
-    console.log('✅ Basketball Playmaker Pro (Master 4.1) initialized');
+    console.log('✅ Basketball Playmaker Pro (Master 4.2) initialized');
   }
 
   // ==========================================================================
@@ -203,7 +182,7 @@ class PlaymakerApp {
     this.updateHistoryButtons();
   }
 
-  undo() {
+  undo = () => {
     if (this.state.historyIndex > 0) {
       this.state.historyIndex--;
       this.state.frames = this.copyFrames(this.state.history[this.state.historyIndex]);
@@ -212,7 +191,7 @@ class PlaymakerApp {
     }
   }
 
-  redo() {
+  redo = () => {
     if (this.state.historyIndex < this.state.history.length - 1) {
       this.state.historyIndex++;
       this.state.frames = this.copyFrames(this.state.history[this.state.historyIndex]);
@@ -624,6 +603,59 @@ class PlaymakerApp {
   }
 
   /**
+   * [REFACTOR] Centralized animation rendering logic.
+   * This is called by both handleAnimate and handleExportVideo to stay DRY.
+   * @param {number} progress - The animation progress (0.0 to 1.0).
+   * @param {object} frame - The current frame object to render.
+   */
+  _renderAnimationFrame(progress, frame) {
+    this.ctx.fillStyle = 'white';
+    this.ctx.fillRect(0, 0, this.config.canvas.width, this.config.canvas.height);
+    const courtImg = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
+    if (courtImg && courtImg.complete) this.ctx.drawImage(courtImg, 0, 0, this.config.canvas.width, this.config.canvas.height);
+
+    this.drawLines(frame.lines);
+
+    const moveLines = new Map();
+    const passLines = new Map();
+    const shootLines = new Map();
+    frame.lines.forEach(line => {
+      if (!line.startPlayerId) return;
+      if (['cut', 'dribble', 'move', 'screen'].includes(line.type)) moveLines.set(line.startPlayerId, line);
+      else if (line.type === 'pass') passLines.set(line.startPlayerId, line);
+      else if (line.type === 'shoot') shootLines.set(line.startPlayerId, line);
+    });
+
+    frame.players.forEach(player => {
+      let drawX = player.x, drawY = player.y, hasBall = player.hasBall;
+      const moveLine = moveLines.get(player.id);
+      const passLine = passLines.get(player.id);
+      const shootLine = shootLines.get(player.id);
+
+      if (moveLine) {
+        const pathLength = this.getPathLength(moveLine.points);
+        const distanceToTravel = pathLength * progress;
+        const newPos = this.getPointAlongPath(moveLine.points, distanceToTravel);
+        drawX = newPos.x;
+        drawY = newPos.y;
+      }
+      if (passLine && progress < 1.0) {
+        hasBall = false;
+        const passPathLength = this.getPathLength(passLine.points);
+        const ballPos = this.getPointAlongPath(passLine.points, passPathLength * progress);
+        this.drawAnimatedBall(ballPos.x, ballPos.y);
+      }
+      if (shootLine && progress < 1.0) {
+        hasBall = false;
+        const shootPathLength = this.getPathLength(shootLine.points);
+        const ballPos = this.getPointAlongPath(shootLine.points, shootPathLength * progress);
+        this.drawAnimatedBall(ballPos.x, ballPos.y);
+      }
+      this.drawPlayerAt(player, drawX, drawY, hasBall);
+    });
+  }
+
+  /**
    * Schedules a draw call using requestAnimationFrame to prevent layout thrashing.
    */
   scheduleDraw() {
@@ -660,18 +692,15 @@ class PlaymakerApp {
     const courtRect = this.dom.courtContainer.getBoundingClientRect();
     const canvasRect = this.dom.canvas.getBoundingClientRect();
 
-    // [FIX] Calculate scaling factors
     const scaleX = canvasRect.width / this.config.canvas.width;
     const scaleY = canvasRect.height / this.config.canvas.height;
 
     const canvasLeftInContainer = canvasRect.left - courtRect.left;
     const canvasTopInContainer = canvasRect.top - courtRect.top;
 
-    // [FIX] Scale player's internal canvas coordinates to CSS coordinates
     const playerX_css = player.x * scaleX;
     const playerY_css = player.y * scaleY;
 
-    // [FIX] Position relative to canvas using scaled coordinates
     const playerXInContainer = canvasLeftInContainer + playerX_css;
     const playerYInContainer = canvasTopInContainer + playerY_css;
 
@@ -795,7 +824,6 @@ class PlaymakerApp {
 
   getMousePos(e) {
     const rect = this.dom.canvas.getBoundingClientRect();
-    // [FIX] Scale CSS coordinates to internal canvas coordinates
     const scaleX = this.config.canvas.width / rect.width;
     const scaleY = this.config.canvas.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
@@ -807,7 +835,6 @@ class PlaymakerApp {
   getTouchPos(e) {
     const touch = e.touches[0] || e.changedTouches[0];
     const rect = this.dom.canvas.getBoundingClientRect();
-    // [FIX] Scale CSS coordinates to internal canvas coordinates
     const scaleX = this.config.canvas.width / rect.width;
     const scaleY = this.config.canvas.height / rect.height;
     const x = (touch.clientX - rect.left) * scaleX;
@@ -819,7 +846,6 @@ class PlaymakerApp {
   getPlayerAtCoord(x, y) {
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return null;
-    // Check against player's internal canvas coordinates
     for (let i = currentFrame.players.length - 1; i >= 0; i--) {
       const p = currentFrame.players[i];
       if (Math.hypot(x - p.x, y - p.y) < p.radius) return p;
@@ -830,7 +856,6 @@ class PlaymakerApp {
   getLineAtCoord(x, y) {
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return null;
-    // Check against line's internal canvas coordinates
     for (const line of currentFrame.lines) {
       for (let i = 0; i < line.points.length - 1; i++) {
         const p1 = line.points[i];
@@ -879,52 +904,55 @@ class PlaymakerApp {
   }
 
   // ==========================================================================
-  // EVENT HANDLER METHODS (Bound in constructor)
+  // EVENT HANDLER METHODS
+  // [REFACTOR] Converted to arrow functions to auto-bind `this`.
   // ==========================================================================
 
   bindEventHandlers() {
+    // [REFACTOR] All `.bind(this)` calls are removed as methods are
+    // now arrow functions.
     this.dom.newPlayBtn.addEventListener('click', () => this.handleNewPlay(true));
-    this.dom.clearFrameBtn.addEventListener('click', this.handleClearFrame.bind(this));
-    this.dom.saveBtn.addEventListener('click', this.handleSave.bind(this));
+    this.dom.clearFrameBtn.addEventListener('click', this.handleClearFrame);
+    this.dom.saveBtn.addEventListener('click', this.handleSave);
     this.dom.loadBtn.addEventListener('click', () => this.dom.loadFileInput.click());
-    this.dom.exportPdfBtn.addEventListener('click', this.handleExportPDF.bind(this));
-    this.dom.exportVideoBtn.addEventListener('click', this.handleExportVideo.bind(this));
-    this.dom.addFrameBtn.addEventListener('click', this.handleAddFrame.bind(this));
-    this.dom.deleteFrameBtn.addEventListener('click', this.handleDeleteFrame.bind(this));
-    this.dom.undoBtn.addEventListener('click', this.undo.bind(this));
-    this.dom.redoBtn.addEventListener('click', this.redo.bind(this));
-    this.dom.animateBtn.addEventListener('click', this.handleAnimate.bind(this));
+    this.dom.exportPdfBtn.addEventListener('click', this.handleExportPDF);
+    this.dom.exportVideoBtn.addEventListener('click', this.handleExportVideo);
+    this.dom.addFrameBtn.addEventListener('click', this.handleAddFrame);
+    this.dom.deleteFrameBtn.addEventListener('click', this.handleDeleteFrame);
+    this.dom.undoBtn.addEventListener('click', this.undo);
+    this.dom.redoBtn.addEventListener('click', this.redo);
+    this.dom.animateBtn.addEventListener('click', this.handleAnimate);
 
-    document.addEventListener('keydown', this.handleKeyDown.bind(this));
+    document.addEventListener('keydown', this.handleKeyDown);
 
     this.dom.courtToggle.addEventListener('change', (e) => {
       this.state.courtType = e.target.value;
       this.draw();
     });
 
-    this.dom.frameList.addEventListener('click', this.handleFrameListClick.bind(this));
-    this.dom.frameNotes.addEventListener('input', this.handleNotesInput.bind(this));
-    this.dom.loadFileInput.addEventListener('change', this.handleLoadFile.bind(this));
+    this.dom.frameList.addEventListener('click', this.handleFrameListClick);
+    this.dom.frameNotes.addEventListener('input', this.handleNotesInput);
+    this.dom.loadFileInput.addEventListener('change', this.handleLoadFile);
 
     // Canvas Listeners
     this.dom.canvas.addEventListener('contextmenu', e => e.preventDefault());
-    this.dom.canvas.addEventListener('mousedown', this.handleCanvasMouseDown.bind(this));
-    this.dom.canvas.addEventListener('mousemove', this.handleCanvasMouseMove.bind(this));
-    this.dom.canvas.addEventListener('mouseup', this.handleCanvasMouseUp.bind(this));
-    this.dom.canvas.addEventListener('touchstart', this.handleCanvasTouchStart.bind(this), { passive: false });
-    this.dom.canvas.addEventListener('touchmove', this.handleCanvasTouchMove.bind(this), { passive: false });
-    this.dom.canvas.addEventListener('touchend', this.handleCanvasTouchEnd.bind(this), { passive: false });
-    this.dom.canvas.addEventListener('dragover', this.handleDragOver.bind(this));
-    this.dom.canvas.addEventListener('dragleave', this.handleDragLeave.bind(this));
-    this.dom.canvas.addEventListener('drop', this.handleDrop.bind(this));
+    this.dom.canvas.addEventListener('mousedown', this.handleCanvasMouseDown);
+    this.dom.canvas.addEventListener('mousemove', this.handleCanvasMouseMove);
+    this.dom.canvas.addEventListener('mouseup', this.handleCanvasMouseUp);
+    this.dom.canvas.addEventListener('touchstart', this.handleCanvasTouchStart, { passive: false });
+    this.dom.canvas.addEventListener('touchmove', this.handleCanvasTouchMove, { passive: false });
+    this.dom.canvas.addEventListener('touchend', this.handleCanvasTouchEnd, { passive: false });
+    this.dom.canvas.addEventListener('dragover', this.handleDragOver);
+    this.dom.canvas.addEventListener('dragleave', this.handleDragLeave);
+    this.dom.canvas.addEventListener('drop', this.handleDrop);
     this.dom.canvas.addEventListener('mouseout', () => this.dom.canvas.classList.remove('drag-over'));
 
     // Document-level listeners for drag robustness
-    this.onDocumentMouseMove = this.onDocumentMouseMove.bind(this);
-    this.onDocumentMouseUp = this.onDocumentMouseUp.bind(this);
+    document.addEventListener('mousemove', this.onDocumentMouseMove);
+    document.addEventListener('mouseup', this.onDocumentMouseUp);
 
     // Wheel actions
-    this.dom.actionWheel.addEventListener('click', this.handleWheelClick.bind(this));
+    this.dom.actionWheel.addEventListener('click', this.handleWheelClick);
 
     // Global click listener
     document.addEventListener('click', (e) => {
@@ -937,12 +965,12 @@ class PlaymakerApp {
 
     // Toolbox DnD
     this.dom.playerToolIcons.forEach(icon => {
-      icon.addEventListener('dragstart', this.handlePlayerDragStart.bind(this));
-      icon.addEventListener('dragend', this.handlePlayerDragEnd.bind(this));
+      icon.addEventListener('dragstart', this.handlePlayerDragStart);
+      icon.addEventListener('dragend', this.handlePlayerDragEnd);
     });
   }
 
-  handleNewPlay(confirmFirst = true) {
+  handleNewPlay = (confirmFirst = true) => {
     if (confirmFirst && this.state.frames.some(f => f.players.length > 0 || f.lines.length > 0)) {
       if (!confirm('Start new play? All unsaved progress will be lost.')) {
         return;
@@ -961,7 +989,7 @@ class PlaymakerApp {
     this.updateHistoryButtons();
   }
 
-  handleAddFrame() {
+  handleAddFrame = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return;
@@ -1005,7 +1033,7 @@ class PlaymakerApp {
     this.saveState();
   }
 
-  handleDeleteFrame() {
+  handleDeleteFrame = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
     if (this.state.frames.length <= 1) {
       this.showAlert('You cannot delete the last frame.');
@@ -1020,7 +1048,7 @@ class PlaymakerApp {
     this.saveState();
   }
 
-  handleClearFrame() {
+  handleClearFrame = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
     if (!confirm('Clear all players and lines from this frame?')) return;
 
@@ -1035,7 +1063,7 @@ class PlaymakerApp {
     this.saveState();
   }
 
-  handleWheelClick(e) {
+  handleWheelClick = (e) => {
     const button = e.target.closest('.wheel-button');
     if (button) {
       this.handleWheelAction(button.dataset.tool);
@@ -1094,7 +1122,7 @@ class PlaymakerApp {
     this.draw();
   }
 
-  handleFrameListClick(e) {
+  handleFrameListClick = (e) => {
     if (this.state.isAnimating || this.state.isExporting) return;
     this.hideActionWheel();
     const clickedFrame = e.target.closest('.frame-thumbnail');
@@ -1104,7 +1132,7 @@ class PlaymakerApp {
     if (frameIndex !== -1) this.switchFrame(frameIndex);
   }
 
-  handleNotesInput() {
+  handleNotesInput = () => {
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (currentFrame) {
       currentFrame.notes = this.dom.frameNotes.value;
@@ -1115,7 +1143,7 @@ class PlaymakerApp {
     }
   }
 
-  handleKeyDown(e) {
+  handleKeyDown = (e) => {
     if (e.ctrlKey || e.metaKey) {
       if (e.key === 'z') { e.preventDefault(); this.undo(); }
       else if (e.key === 'y') { e.preventDefault(); this.redo(); }
@@ -1155,7 +1183,7 @@ class PlaymakerApp {
     }
   }
 
-  handleAnimate() {
+  handleAnimate = () => {
     if (this.state.isExporting) return;
     if (this.state.isAnimating) {
       this.stopAnimation();
@@ -1180,50 +1208,8 @@ class PlaymakerApp {
         const frameA = this.state.frames[this.state.currentFramePlaying];
         if (!frameA) { this.stopAnimation(); return; }
 
-        this.ctx.fillStyle = 'white';
-        this.ctx.fillRect(0, 0, this.config.canvas.width, this.config.canvas.height);
-        const courtImg = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
-        if (courtImg && courtImg.complete) this.ctx.drawImage(courtImg, 0, 0, this.config.canvas.width, this.config.canvas.height);
-
-        this.drawLines(frameA.lines);
-
-        const moveLines = new Map();
-        const passLines = new Map();
-        const shootLines = new Map();
-        frameA.lines.forEach(line => {
-          if (!line.startPlayerId) return;
-          if (['cut', 'dribble', 'move', 'screen'].includes(line.type)) moveLines.set(line.startPlayerId, line);
-          else if (line.type === 'pass') passLines.set(line.startPlayerId, line);
-          else if (line.type === 'shoot') shootLines.set(line.startPlayerId, line);
-        });
-
-        frameA.players.forEach(player => {
-          let drawX = player.x, drawY = player.y, hasBall = player.hasBall;
-          const moveLine = moveLines.get(player.id);
-          const passLine = passLines.get(player.id);
-          const shootLine = shootLines.get(player.id);
-
-          if (moveLine) {
-            const pathLength = this.getPathLength(moveLine.points);
-            const distanceToTravel = pathLength * progress;
-            const newPos = this.getPointAlongPath(moveLine.points, distanceToTravel);
-            drawX = newPos.x;
-            drawY = newPos.y;
-          }
-          if (passLine && progress < 1.0) {
-            hasBall = false;
-            const passPathLength = this.getPathLength(passLine.points);
-            const ballPos = this.getPointAlongPath(passLine.points, passPathLength * progress);
-            this.drawAnimatedBall(ballPos.x, ballPos.y);
-          }
-          if (shootLine && progress < 1.0) {
-            hasBall = false;
-            const shootPathLength = this.getPathLength(shootLine.points);
-            const ballPos = this.getPointAlongPath(shootLine.points, shootPathLength * progress);
-            this.drawAnimatedBall(ballPos.x, ballPos.y);
-          }
-          this.drawPlayerAt(player, drawX, drawY, hasBall);
-        });
+        // [REFACTOR] Use centralized render method
+        this._renderAnimationFrame(progress, frameA);
 
         if (progress < 1.0) {
           this.state.animationFrameId = requestAnimationFrame(animatePlay);
@@ -1245,7 +1231,7 @@ class PlaymakerApp {
 
   // --- Pointer Handlers (Mouse & Touch) ---
 
-  handleCanvasPointerDown(x, y, viewportX, viewportY, e) {
+  handleCanvasPointerDown = (x, y, viewportX, viewportY, e) => {
     if (this.state.isAnimating || this.state.isExporting) return;
 
     if (this.state.isDrawingLine) {
@@ -1299,7 +1285,7 @@ class PlaymakerApp {
     }
   }
 
-  handleCanvasPointerMove(x, y) {
+  handleCanvasPointerMove = (x, y) => {
     if (this.state.isAnimating || this.state.isExporting) return;
 
     if (!this.state.isDragging && !this.state.isDrawingLine) {
@@ -1322,7 +1308,7 @@ class PlaymakerApp {
     }
   }
 
-  handleCanvasPointerUp(x, y, viewportX, viewportY) {
+  handleCanvasPointerUp = (x, y, viewportX, viewportY) => {
     if (this.state.isAnimating || this.state.isExporting) return;
 
     if (this.state.isDragging) {
@@ -1344,51 +1330,50 @@ class PlaymakerApp {
   }
 
   // --- Mouse Adapters ---
-  handleCanvasMouseDown(e) {
+  handleCanvasMouseDown = (e) => {
     const { x, y, viewportX, viewportY } = this.getMousePos(e);
     this.handleCanvasPointerDown(x, y, viewportX, viewportY, e);
   }
-  handleCanvasMouseMove(e) {
+  handleCanvasMouseMove = (e) => {
     const { x, y } = this.getMousePos(e);
     this.handleCanvasPointerMove(x, y);
   }
-  handleCanvasMouseUp(e) {
+  handleCanvasMouseUp = (e) => {
     const { x, y, viewportX, viewportY } = this.getMousePos(e);
     this.handleCanvasPointerUp(x, y, viewportX, viewportY);
   }
 
   // --- Touch Adapters ---
-  handleCanvasTouchStart(e) {
+  handleCanvasTouchStart = (e) => {
     e.preventDefault();
     const { x, y, viewportX, viewportY } = this.getTouchPos(e);
     this.handleCanvasPointerDown(x, y, viewportX, viewportY, e);
   }
-  handleCanvasTouchMove(e) {
+  handleCanvasTouchMove = (e) => {
     e.preventDefault();
     const { x, y } = this.getTouchPos(e);
     this.handleCanvasPointerMove(x, y);
   }
-  handleCanvasTouchEnd(e) {
+  handleCanvasTouchEnd = (e) => {
     e.preventDefault();
-    // Use getTouchPos for consistency, reading from changedTouches
     const { x, y, viewportX, viewportY } = this.getTouchPos(e);
     this.handleCanvasPointerUp(x, y, viewportX, viewportY);
   }
 
   // --- Robust Drag Handlers ---
-  onDocumentMouseMove(e) {
+  onDocumentMouseMove = (e) => {
     if (!this.state.isDragging) return;
     const { x, y } = this.getMousePos(e);
     this.handleCanvasPointerMove(x, y);
   }
-  onDocumentMouseUp(e) {
+  onDocumentMouseUp = (e) => {
     if (!this.state.isDragging) return;
     const { x, y, viewportX, viewportY } = this.getMousePos(e);
     this.handleCanvasPointerUp(x, y, viewportX, viewportY);
   }
 
   // --- Drag and Drop Handlers ---
-  handlePlayerDragStart(e) {
+  handlePlayerDragStart = (e) => {
     if (this.state.isAnimating || this.state.isExporting) {
       e.preventDefault();
       return;
@@ -1399,31 +1384,29 @@ class PlaymakerApp {
     icon.classList.add('dragging');
     this.setInstruction(`Drop player ${icon.dataset.player} onto the court`);
   }
-  handlePlayerDragEnd(e) {
+  handlePlayerDragEnd = (e) => {
     const icon = e.target.closest('.player-tool-icon');
     icon.classList.remove('dragging');
     this.setInstruction('Drag a player onto the court');
   }
-  handleDragOver(e) {
+  handleDragOver = (e) => {
     e.preventDefault();
     this.dom.canvas.classList.add('drag-over');
     e.dataTransfer.dropEffect = 'copy';
   }
-  handleDragLeave() {
+  handleDragLeave = () => {
     this.dom.canvas.classList.remove('drag-over');
   }
-  handleDrop(e) {
+  handleDrop = (e) => {
     e.preventDefault();
     this.dom.canvas.classList.remove('drag-over');
     const playerLabel = e.dataTransfer.getData('text/plain');
     if (playerLabel) {
-      // [FIX] Use getMousePos, which is now scaled
       const { x, y, viewportX, viewportY } = this.getMousePos(e);
       const newPlayer = this.createPlayerAt(x, y, playerLabel);
       if (newPlayer) {
         this.draw();
         this.saveState();
-        // [FIX] showActionWheel is now scaled
         this.showActionWheel(newPlayer, viewportX, viewportY);
       }
     }
@@ -1433,7 +1416,7 @@ class PlaymakerApp {
   // FILE OPERATIONS (Save, Load, Export)
   // ==========================================================================
 
-  handleSave() {
+  handleSave = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
     const playName = this.dom.playNameInput.value || 'Untitled Play';
     const filename = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
@@ -1461,7 +1444,7 @@ class PlaymakerApp {
     }
   }
 
-  handleLoadFile(e) {
+  handleLoadFile = (e) => {
     const file = e.target.files[0];
     if (file) {
       this.handleLoad(file);
@@ -1493,7 +1476,6 @@ class PlaymakerApp {
           this.state.nextPlayerId = maxId + 1;
         }
 
-        // Ensure all lines have unique IDs (for backward compatibility)
         this.state.frames.forEach(frame => {
           frame.lines.forEach(line => { if (!line.id) line.id = this.lineIdCounter++; });
         });
@@ -1518,7 +1500,7 @@ class PlaymakerApp {
     reader.readText(file);
   }
 
-  handleExportPDF() {
+  handleExportPDF = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
     this.state.isExporting = true;
     this.dom.exportPdfBtn.disabled = true;
@@ -1545,7 +1527,7 @@ class PlaymakerApp {
           const frameIndexInPage = i % 3;
           if (i > 0 && frameIndexInPage === 0) doc.addPage();
 
-          this.switchFrame(i); // Temporarily switch frame to draw
+          this.switchFrame(i);
           const imgData = this.dom.canvas.toDataURL('image/png');
           const yPos = margin + frameIndexInPage * frameRowH + 5;
           const imgX = margin;
@@ -1566,7 +1548,7 @@ class PlaymakerApp {
 
         const filename = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
         doc.save(filename);
-        this.switchFrame(originalFrameIndex); // Restore original frame
+        this.switchFrame(originalFrameIndex);
       } catch (error) {
         console.error('PDF export error:', error);
         this.showAlert(`Could not generate PDF: ${error.message}`);
@@ -1575,10 +1557,10 @@ class PlaymakerApp {
         this.dom.exportPdfBtn.disabled = false;
         this.hideLoading();
       }
-    }, 100); // Timeout to allow loading UI to render
+    }, 100);
   }
 
-  handleExportVideo() {
+  handleExportVideo = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
     if (this.state.frames.length < 2) {
       this.showAlert('You need at least two frames to create a video.');
@@ -1631,7 +1613,7 @@ class PlaymakerApp {
       let finalFrameHoldStart = 0;
 
       const recordAnimationLoop = (timestamp) => {
-        if (!this.state.isExporting) { // Check if cancelled
+        if (!this.state.isExporting) {
           recorder.stop();
           return;
         }
@@ -1651,47 +1633,8 @@ class PlaymakerApp {
         const currentRecordFrame = this.state.frames[frameToPlay];
         if (!currentRecordFrame) { recorder.stop(); return; }
 
-        // --- Identical Render logic from animatePlay ---
-        this.ctx.fillStyle = 'white';
-        this.ctx.fillRect(0, 0, this.config.canvas.width, this.config.canvas.height);
-        const courtImg = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
-        if (courtImg && courtImg.complete) this.ctx.drawImage(courtImg, 0, 0, this.config.canvas.width, this.config.canvas.height);
-        this.drawLines(currentRecordFrame.lines);
-        const moveLines = new Map();
-        const passLines = new Map();
-        const shootLines = new Map();
-        currentRecordFrame.lines.forEach(line => {
-          if (!line.startPlayerId) return;
-          if (['cut', 'dribble', 'move', 'screen'].includes(line.type)) moveLines.set(line.startPlayerId, line);
-          else if (line.type === 'pass') passLines.set(line.startPlayerId, line);
-          else if (line.type === 'shoot') shootLines.set(line.startPlayerId, line);
-        });
-        currentRecordFrame.players.forEach(player => {
-          let drawX = player.x, drawY = player.y, hasBall = player.hasBall;
-          const moveLine = moveLines.get(player.id);
-          const passLine = passLines.get(player.id);
-          const shootLine = shootLines.get(player.id);
-          if (moveLine) {
-            const pathLength = this.getPathLength(moveLine.points);
-            const newPos = this.getPointAlongPath(moveLine.points, pathLength * progress);
-            drawX = newPos.x;
-            drawY = newPos.y;
-          }
-          if (passLine && progress < 1.0) {
-            hasBall = false;
-            const passPathLength = this.getPathLength(passLine.points);
-            const ballPos = this.getPointAlongPath(passLine.points, passPathLength * progress);
-            this.drawAnimatedBall(ballPos.x, ballPos.y);
-          }
-          if (shootLine && progress < 1.0) {
-            hasBall = false;
-            const shootPathLength = this.getPathLength(shootLine.points);
-            const ballPos = this.getPointAlongPath(shootLine.points, shootPathLength * progress);
-            this.drawAnimatedBall(ballPos.x, ballPos.y);
-          }
-          this.drawPlayerAt(player, drawX, drawY, hasBall);
-        });
-        // --- End Render Logic ---
+        // [REFACTOR] Use centralized render method
+        this._renderAnimationFrame(progress, currentRecordFrame);
 
         if (progress < 1.0) {
           requestAnimationFrame(recordAnimationLoop);
