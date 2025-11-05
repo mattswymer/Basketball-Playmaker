@@ -3,87 +3,57 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <meta name="description" content="Basketball Playmaker Pro - Professional basketball play diagramming with radial menu interface. Create, animate, and export basketball plays." />
-  <meta name="keywords" content="basketball, playmaker, coach, diagram, animation, plays, sports" />
-  <meta name="author" content="Matt Swymer" />
+  <meta name="description" content="Basketball Playmaker Pro - Professional basketball play diagramming with radial menu interface" />
   <meta name="theme-color" content="#1a1a1a" />
-  
-  <!-- Open Graph Meta Tags for Social Sharing -->
-  <meta property="og:title" content="Basketball Playmaker Pro" />
-  <meta property="og:description" content="Professional basketball play diagramming and animation tool" />
-  <meta property="og:type" content="website" />
-  
-  <!-- Performance Optimization -->
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
-  <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
 
-  <title>Basketball Playmaker Pro - Professional Play Diagramming Tool</title>
+  <title>Basketball Playmaker Pro</title>
 
   <link rel="stylesheet" href="style.css" />
 
-  <!-- jsPDF Library - Optimized Loading -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" 
-          integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNZlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" 
-          crossorigin="anonymous" 
-          referrerpolicy="no-referrer"
-          defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" defer></script>
 
   <script src="app.js" defer></script>
 </head>
 <body>
-  <!-- Skip to Main Content (Accessibility) -->
-  <a href="#play-canvas" class="skip-to-main visually-hidden">Skip to basketball court</a>
-
   <div id="app-container">
 
-    <!-- Main Navigation Toolbar -->
     <nav id="top-toolbar" role="navigation" aria-label="Main toolbar">
-      
-      <!-- Play Information Section -->
-      <div class="toolbar-section" aria-label="Play information">
+      <div class="toolbar-section">
         <label for="play-name">Play Name:</label>
         <input
           type="text"
           id="play-name"
           placeholder="Untitled Play"
-          maxlength="100"
-          autocomplete="off"
-          aria-label="Enter play name"
-          aria-describedby="play-name-hint" />
-        <span id="play-name-hint" class="visually-hidden">Enter a descriptive name for your basketball play</span>
+          aria-label="Enter play name" />
 
-        <label for="court-toggle">Court:</label>
+        <label for="court-toggle" class="visually-hidden">Court Type</label>
         <select id="court-toggle" aria-label="Select court type">
           <option value="half" selected>Half Court</option>
           <option value="full">Full Court</option>
         </select>
       </div>
 
-      <!-- Edit Controls Section -->
-      <div class="toolbar-section" aria-label="Edit controls">
+      <div class="toolbar-section">
         <button
           id="new-play"
           class="btn btn-warning"
-          aria-label="Create new play"
-          title="Start a new play (clears current work)">
+          aria-label="Create new play">
           🆕 New Play
         </button>
 
         <button
           id="undo-btn"
           class="btn btn-primary"
-          title="Undo last action (Ctrl+Z / Cmd+Z)"
+          title="Undo (Ctrl+Z)"
           aria-label="Undo last action"
-          aria-keyshortcuts="Control+Z"
           disabled>
           ↶ Undo
         </button>
         <button
           id="redo-btn"
           class="btn btn-primary"
-          title="Redo last undone action (Ctrl+Y / Cmd+Y)"
+          title="Redo (Ctrl+Y)"
           aria-label="Redo last undone action"
-          aria-keyshortcuts="Control+Y"
           disabled>
           ↷ Redo
         </button>
@@ -91,342 +61,240 @@
         <button
           id="clear-frame"
           class="btn btn-danger"
-          aria-label="Clear current frame"
-          title="Remove all players and lines from current frame">
+          aria-label="Clear current frame">
           🗑️ Clear Frame
         </button>
       </div>
 
-      <!-- Animation Controls Section -->
-      <div class="toolbar-section" aria-label="Animation controls">
+      <div class="toolbar-section">
         <button
           id="animate-play"
           class="btn btn-primary"
-          aria-label="Play animation"
-          title="Animate the play through all frames">
+          aria-label="Play animation">
           ▶️ Animate
         </button>
       </div>
 
-      <!-- File Operations Section -->
-      <div class="toolbar-section" aria-label="File operations">
+      <div class="toolbar-section">
         <button
           id="save-play"
           class="btn btn-success"
-          aria-label="Save play to file"
-          title="Download play as JSON file">
+          aria-label="Save play to file">
           💾 Save
         </button>
         <button
           id="load-play"
           class="btn btn-info"
-          aria-label="Load play from file"
-          title="Load a previously saved play">
+          aria-label="Load play from file">
           📂 Load
         </button>
         <input
           type="file"
           id="load-file-input"
           class="visually-hidden"
-          accept=".json,application/json"
+          accept=".json"
           aria-label="Select play file to load" />
       </div>
 
-      <!-- Export Options Section -->
-      <div class="toolbar-section" aria-label="Export options">
+      <div class="toolbar-section">
         <button
           id="export-video-btn"
           class="btn btn-info"
-          aria-label="Export play as video"
-          title="Record animation as WebM video">
+          aria-label="Export play as video">
           🎬 Export Video
         </button>
         <button
           id="export-pdf"
           class="btn btn-warning"
-          aria-label="Export play as PDF"
-          title="Generate multi-page PDF document">
+          aria-label="Export play as PDF">
           📄 PDF
         </button>
       </div>
     </nav>
 
-    <!-- Instruction Bar with Live Updates -->
-    <div id="instruction-bar" role="status" aria-live="polite" aria-atomic="true">
+    <div id="instruction-bar" role="status" aria-live="polite">
       <span id="instruction-text">Drag a player onto the court to begin</span>
     </div>
 
-    <!-- Main Content Area -->
     <main id="main-content">
 
-      <!-- Frame Management Panel -->
       <aside id="frame-panel" role="complementary" aria-label="Frame management">
-        <h3 id="frames-heading">Frames</h3>
+        <h3>Frames</h3>
         <div
           id="frame-list"
           role="list"
-          aria-labelledby="frames-heading"
-          aria-live="polite">
-          <!-- Frame thumbnails populated dynamically -->
+          aria-label="List of animation frames">
         </div>
 
-        <div class="frame-controls" role="group" aria-label="Frame actions">
+        <div class="frame-controls">
           <button
             id="add-frame"
             class="btn btn-success"
-            aria-label="Add new frame"
-            title="Create a new frame after current">
+            aria-label="Add new frame">
             + Add
           </button>
           <button
             id="delete-frame"
             class="btn btn-danger"
-            aria-label="Delete current frame"
-            title="Remove the current frame">
+            aria-label="Delete current frame">
             - Delete
           </button>
         </div>
 
-        <h3 id="notes-heading">Notes</h3>
-        <label for="frame-notes" class="visually-hidden">Frame notes</label>
+        <h3>Notes</h3>
         <textarea
           id="frame-notes"
-          placeholder="Add coaching notes for this frame..."
-          aria-labelledby="notes-heading"
-          aria-describedby="notes-hint"
-          maxlength="5000"
-          spellcheck="true"></textarea>
-        <span id="notes-hint" class="visually-hidden">Enter coaching instructions or play details for this frame</span>
+          placeholder="Add notes for this frame..."
+          aria-label="Frame notes">
+        </textarea>
       </aside>
 
-      <!-- Basketball Court Canvas -->
       <div id="court-container" role="main" aria-label="Basketball court canvas">
         <canvas
           id="play-canvas"
           role="img"
-          aria-label="Basketball play diagram. Use toolbar to add players and draw actions.">
-          Your browser does not support the HTML5 canvas element. Please use a modern browser.
+          aria-label="Basketball play diagram">
         </canvas>
 
-        <!-- Radial Action Wheel Menu -->
-        <div id="action-wheel" class="hidden" role="menu" aria-label="Player action menu">
-          <div class="wheel-button" 
-               id="wheel-cut" 
-               data-tool="cut" 
-               role="menuitem" 
-               tabindex="-1"
-               aria-label="Move or cut action"
-               aria-keyshortcuts="M"></div>
-          <div class="wheel-button" 
-               id="wheel-pass" 
-               data-tool="pass" 
-               role="menuitem" 
-               tabindex="-1"
-               aria-label="Pass ball action"
-               aria-keyshortcuts="P"></div>
-          <div class="wheel-button" 
-               id="wheel-screen" 
-               data-tool="screen" 
-               role="menuitem" 
-               tabindex="-1"
-               aria-label="Set screen action"
-               aria-keyshortcuts="S"></div>
-          <div class="wheel-button" 
-               id="wheel-delete" 
-               data-tool="delete" 
-               role="menuitem" 
-               tabindex="-1"
-               aria-label="Delete player"
-               aria-keyshortcuts="Delete"></div>
-          <div class="wheel-button" 
-               id="wheel-ball" 
-               data-tool="assign-ball" 
-               role="menuitem" 
-               tabindex="-1"
-               aria-label="Assign or remove ball"
-               aria-keyshortcuts="B"></div>
-          <div class="wheel-button" 
-               id="wheel-shoot" 
-               data-tool="shoot" 
-               role="menuitem" 
-               tabindex="-1"
-               aria-label="Shoot ball action"
-               aria-keyshortcuts="X"></div>
-          <div class="wheel-button" 
-               id="wheel-dribble" 
-               data-tool="dribble" 
-               role="menuitem" 
-               tabindex="-1"
-               aria-label="Dribble ball action"
-               aria-keyshortcuts="D"></div>
+        <div id="action-wheel" class="hidden" role="menu" aria-label="Player actions">
+          <div class="wheel-button" id="wheel-cut" data-tool="cut" role="menuitem" aria-label="Move / Cut" title="Move / Cut (M)"></div>
+          <div class="wheel-button" id="wheel-pass" data-tool="pass" role="menuitem" aria-label="Pass" title="Pass (P)"></div>
+          <div class="wheel-button" id="wheel-screen" data-tool="screen" role="menuitem" aria-label="Screen" title="Screen (S)"></div>
+          <div class="wheel-button" id="wheel-delete" data-tool="delete" role="menuitem" aria-label="Delete Player" title="Delete (Del)"></div>
+          <div class="wheel-button" id="wheel-ball" data-tool="assign-ball" role="menuitem" aria-label="Assign Ball" title="Assign Ball (B)"></div>
+          <div class="wheel-button" id="wheel-shoot" data-tool="shoot" role="menuitem" aria-label="Shoot" title="Shoot (X)"></div>
+          <div class="wheel-button" id="wheel-dribble" data-tool="dribble" role="menuitem" aria-label="Dribble" title="Dribble (D)"></div>
         </div>
       </div>
 
-      <!-- Player Selection Toolbox -->
-      <aside id="drawing-toolbox" role="complementary" aria-label="Player selection toolbox">
+      <aside id="drawing-toolbox" role="complementary" aria-label="Player selection">
         <h3>Players</h3>
 
-        <h4 id="offense-heading">Offense</h4>
+        <h4>Offense</h4>
         <div
           class="player-palette"
           id="player-palette-offense"
           role="group"
-          aria-labelledby="offense-heading">
+          aria-label="Offensive players">
           <canvas
             class="player-tool-icon"
             data-player="1"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 1 to court"></canvas>
+            aria-label="Drag offensive player 1 to court">
+          </canvas>
           <canvas
             class="player-tool-icon"
             data-player="2"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 2 to court"></canvas>
+            aria-label="Drag offensive player 2 to court">
+          </canvas>
           <canvas
             class="player-tool-icon"
             data-player="3"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 3 to court"></canvas>
+            aria-label="Drag offensive player 3 to court">
+          </canvas>
           <canvas
             class="player-tool-icon"
             data-player="4"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 4 to court"></canvas>
+            aria-label="Drag offensive player 4 to court">
+          </canvas>
           <canvas
             class="player-tool-icon"
             data-player="5"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 5 to court"></canvas>
+            aria-label="Drag offensive player 5 to court">
+          </canvas>
         </div>
 
-        <h4 id="defense-heading">Defense</h4>
+        <h4>Defense</h4>
         <div
           class="player-palette"
           id="player-palette-defense"
           role="group"
-          aria-labelledby="defense-heading">
+          aria-label="Defensive players">
           <canvas
             class="player-tool-icon"
             data-player="X1"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X1 to court"></canvas>
+            aria-label="Drag defensive player X1 to court">
+          </canvas>
           <canvas
             class="player-tool-icon"
             data-player="X2"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X2 to court"></canvas>
+            aria-label="Drag defensive player X2 to court">
+          </canvas>
           <canvas
             class="player-tool-icon"
             data-player="X3"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X3 to court"></canvas>
+            aria-label="Drag defensive player X3 to court">
+          </canvas>
           <canvas
             class="player-tool-icon"
             data-player="X4"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X4 to court"></canvas>
+            aria-label="Drag defensive player X4 to court">
+          </canvas>
           <canvas
             class="player-tool-icon"
             data-player="X5"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X5 to court"></canvas>
+            aria-label="Drag defensive player X5 to court">
+          </canvas>
         </div>
 
-        <!-- Help Section -->
-        <div class="help-section" role="region" aria-label="Quick tips">
+<div class="help-section">
           <h4>💡 Quick Tips</h4>
           <ul>
-            <li>Drag players to court</li>
-            <li>Click player for actions</li>
-            <li>Double-click to finish line</li>
-            <li>Click line to delete it</li>
-            <li>Use <kbd>Ctrl+Z</kbd> to undo</li>
-            <li>Press <kbd>Esc</kbd> to cancel</li>
+            <li>- Drag players to court</li>
+            <li>- Click player for actions</li>
+            <li>- Double-click to finish line</li>
+            <li>- Click line to delete it</li>
           </ul>
         </div>
 
-        <!-- Keyboard Shortcuts Reference -->
-        <details class="help-section">
-          <summary>⌨️ Keyboard Shortcuts</summary>
-          <dl class="shortcuts-list">
-            <dt><kbd>M</kbd></dt><dd>Move/Cut</dd>
-            <dt><kbd>P</kbd></dt><dd>Pass</dd>
-            <dt><kbd>S</kbd></dt><dd>Screen</dd>
-            <dt><kbd>D</kbd></dt><dd>Dribble</dd>
-            <dt><kbd>X</kbd></dt><dd>Shoot</dd>
-            <dt><kbd>B</kbd></dt><dd>Toggle Ball</dd>
-            <dt><kbd>Del</kbd></dt><dd>Delete</dd>
-            <dt><kbd>Esc</kbd></dt><dd>Cancel</dd>
-          </dl>
-        </details>
-
-        <!-- Donation Links -->
-        <div id="donationLinks" role="region" aria-label="Support this project">
-          <span>Like this app?</span>
-          <a href="https://www.paypal.me/mattswymer84" 
-             target="_blank" 
-             rel="noopener noreferrer"
-             aria-label="Donate via PayPal">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/PayPal_2024_%28Icon%29.svg/250px-PayPal_2024_%28Icon%29.svg.png" 
-                 alt="PayPal" 
-                 width="24" 
-                 height="24"
-                 loading="lazy" />
+        <div id="donationLinks">
+          Like this app?
+          <a href="https://www.paypal.me/mattswymer84" target="_blank" title="PayPal">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/PayPal_2024_%28Icon%29.svg/250px-PayPal_2024_%28Icon%29.svg.png" alt="PayPal" />
           </a>
-          <a href="https://venmo.com/mattswymer" 
-             target="_blank" 
-             rel="noopener noreferrer"
-             aria-label="Donate via Venmo">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Venmo_logo.png/1200px-Venmo_logo.png" 
-                 alt="Venmo" 
-                 width="24" 
-                 height="24"
-                 loading="lazy" />
+          <a href="https://venmo.com/mattswymer" target="_blank" title="Venmo">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Venmo_logo.png/1200px-Venmo_logo.png" alt="Venmo" />
           </a>
         </div>
       </aside>
     </main>
   </div>
 
-  <!-- Loading Overlay with Improved Accessibility -->
-  <div id="loading-overlay" 
-       class="hidden" 
-       role="alert" 
-       aria-live="assertive"
-       aria-busy="false">
+  <div id="loading-overlay" class="hidden" role="alert" aria-live="assertive">
     <div class="spinner-box">
-      <div class="spinner" aria-hidden="true" role="presentation"></div>
-      <span id="loading-text">Processing...</span>
+      <div class="spinner" aria-hidden="true"></div>
+      <span id="loading-text">Generating...</span>
     </div>
   </div>
-
-  <!-- Error Boundary (for future JS error handling) -->
-  <noscript>
-    <div style="padding: 2rem; text-align: center; background: #fff3cd; color: #856404;">
-      <h2>⚠️ JavaScript Required</h2>
-      <p>Basketball Playmaker Pro requires JavaScript to function. Please enable JavaScript in your browser settings.</p>
-    </div>
-  </noscript>
 
 </body>
 </html>

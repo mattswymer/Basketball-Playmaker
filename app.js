@@ -811,7 +811,6 @@ class PlaymakerApp {
       }
       this.state.isAnimating = false;
       this.state.animationStartTime = 0;
-      this.state.currentFramePlaying = 0; // This is the fix
       this.dom.animateBtn.textContent = '▶️ Animate';
       this.dom.animateBtn.classList.remove('btn-danger');
       this.dom.animateBtn.classList.add('btn-primary');
@@ -1445,7 +1444,6 @@ class PlaymakerApp {
     }
   }
 
-  // ===== REVERTED TO ORIGINAL FILEREADER =====
   handleLoadFile = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -1499,9 +1497,8 @@ class PlaymakerApp {
       console.error('File read error:', reader.error);
       this.showAlert('Error reading file.');
     };
-    reader.readAsText(file);
+    reader.readText(file);
   }
-  // ===== END OF REVERT =====
 
   handleExportPDF = () => {
     if (this.state.isAnimating || this.state.isExporting) return;

@@ -307,7 +307,7 @@ body {
   box-shadow: var(--shadow-md);
   transition: box-shadow var(--transition-slow), border-color var(--transition-slow);
   cursor: grab;
-  touch-action: manipulation; /* Prevents double-tap zoom */
+  touch-action: none;
   max-width: 100%;
   height: auto;
 }
@@ -634,25 +634,4 @@ body {
 #donationLinks img {
   height: 1.5rem;
   width: auto;
-}
-
-/* ===== OPTIMIZATIONS FROM REVIEW ===== */
-
-/* Performance hints */
-.wheel-button {
-  will-change: transform;
-}
-#action-wheel {
-  will-change: opacity, transform;
-}
-
-/* Mobile touch feedback */
-.wheel-button:active {
-  transform: scale(0.95);
-  background: var(--color-gray-light);
-}
-@media (hover: none) {
-  .wheel-button {
-    font-size: 1.4rem; /* Larger touch targets */
-  }
 }
