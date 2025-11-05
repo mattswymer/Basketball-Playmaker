@@ -9,19 +9,14 @@
   <title>Basketball Playmaker Pro</title>
 
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- External Dependencies -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" defer></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.4.1/gifshot.min.js" crossorigin="anonymous" defer></script>
 
-  <!-- Application Logic -->
   <script src="app.js" defer></script>
 </head>
 <body>
   <div id="app-container">
 
-    <!-- Top Toolbar -->
     <nav id="top-toolbar" role="navigation" aria-label="Main toolbar">
       <div class="toolbar-section">
         <label for="play-name">Play Name:</label>
@@ -117,15 +112,12 @@
       </div>
     </nav>
 
-    <!-- Instruction Bar -->
     <div id="instruction-bar" role="status" aria-live="polite">
       <span id="instruction-text">Drag a player onto the court to begin</span>
     </div>
 
-    <!-- Main Application Area -->
     <main id="main-content">
 
-      <!-- Frame Management Panel -->
       <aside id="frame-panel" role="complementary" aria-label="Frame management">
         <h3>Frames</h3>
         <div
@@ -157,7 +149,6 @@
         </textarea>
       </aside>
 
-      <!-- Canvas Area -->
       <div id="court-container" role="main" aria-label="Basketball court canvas">
         <canvas
           id="play-canvas"
@@ -165,7 +156,6 @@
           aria-label="Basketball play diagram">
         </canvas>
 
-        <!-- Radial Action Menu (positioned by JavaScript) -->
         <div id="action-wheel" class="hidden" role="menu" aria-label="Player actions">
           <div class="wheel-button" id="wheel-cut" data-tool="cut" role="menuitem" aria-label="Move / Cut" title="Move / Cut (M)"></div>
           <div class="wheel-button" id="wheel-pass" data-tool="pass" role="menuitem" aria-label="Pass" title="Pass (P)"></div>
@@ -177,7 +167,6 @@
         </div>
       </div>
 
-      <!-- Player Toolbox Panel -->
       <aside id="drawing-toolbox" role="complementary" aria-label="Player selection">
         <h3>Players</h3>
 
@@ -277,8 +266,7 @@
           </canvas>
         </div>
 
-<!-- Help Section -->
-        <div class="help-section">
+<div class="help-section">
           <h4>💡 Quick Tips</h4>
           <ul>
             <li>- Drag players to court</li>
@@ -288,21 +276,19 @@
           </ul>
         </div>
 
-        <!-- Donation Links -->
-        <div id="donationLinks" class="flex items-center gap-2 text-sm text-gray-400 mt-4 px-2">
+        <div id="donationLinks">
           Like this app?
           <a href="https://www.paypal.me/mattswymer84" target="_blank" title="PayPal">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/PayPal_2024_%28Icon%29.svg/250px-PayPal_2024_%28Icon%29.svg.png" alt="PayPal" class="h-6 w-auto" />
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/PayPal_2024_%28Icon%29.svg/250px-PayPal_2024_%28Icon%29.svg.png" alt="PayPal" />
           </a>
           <a href="https://venmo.com/mattswymer" target="_blank" title="Venmo">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Venmo_logo.png/1200px-Venmo_logo.png" alt="Venmo" class="h-6 w-auto" />
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Venmo_logo.png/1200px-Venmo_logo.png" alt="Venmo" />
           </a>
         </div>
       </aside>
     </main>
   </div>
 
-  <!-- Loading Overlay -->
   <div id="loading-overlay" class="hidden" role="alert" aria-live="assertive">
     <div class="spinner-box">
       <div class="spinner" aria-hidden="true"></div>
@@ -311,7 +297,4 @@
   </div>
 
 </body>
-
 </html>
-
-

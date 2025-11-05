@@ -1,130 +1,140 @@
 /**
- * Basketball Playmaker Pro - Master Version
- * - [FIXED] Implemented missing createPlayerAt function to resolve drag-drop bug.
- * - [FIXED] Removed critical syntax error (stray 's') that broke script execution.
- * - [FIXED] Corrected dribble line algorithm (Bug 1/3)
- * - [FIXED] Centered radial menu on player icon (Bug 2/3)
- * - [FIXED] Restored double arrowhead for shoot line (Bug 3/3)
- * - [FIXED] Perfected radial menu show/hide logic for drag vs. click (Bug 1/2)
- * - [FIXED] Removed redundant blue selection highlight (Bug 2/2)
- * - Radial menu drag-friendly behavior (no early stop)
- * - Robust double-click finalization (no stray waypoints)
- * - Arrow-safe end snapping (arrow visible)
- * - Line highlight on selection (and on hover)
- * - Tooltips with shortcuts on wheel buttons
- * @version 3.2.4
+ * Basketball Playmaker Pro - Master Version 4.0
+ *
+ * This application has been refactored into an encapsulated, class-based
+ * structure. All application logic, state, and DOM references are managed
+_ * by the `PlaymakerApp` class, eliminating global scope pollution and
+ * dramatically improving maintainability, readability, and stability.
+ *
+ * @version 4.0.0
+ * @author CodeGuardian
  */
 'use strict';
 
-document.addEventListener('DOMContentLoaded', async () => {
-  // ============================================================================
-  // CONFIGURATION & CONSTANTS
-  // ============================================================================
-  const CONFIG = {
-    canvas: { width: 800, height: 600 },
-    player: {
-      radius: 15,
-      ballIndicatorOffset: 5,
-      colors: {
-        offense: '#007bff',
-        defense: '#dc3545',
-        ballHolder: '#000000',
-        ballAnimation: '#FF8C00'
+class PlaymakerApp {
+  constructor() {
+    // ========================================================================
+    // CONFIGURATION & CONSTANTS
+    // ========================================================================
+    this.config = {
+      canvas: { width: 800, height: 600 },
+      player: {
+        radius: 15,
+        ballIndicatorOffset: 5,
+        colors: {
+          offense: '#007bff',
+          defense: '#dc3545',
+          ballHolder: '#000000',
+          ballAnimation: '#FF8C00'
+        }
+      },
+      line: {
+        color: '#343a40',
+        selectedColor: '#e74c3c',
+        hoverColor: '#2980b9',
+        width: 3,
+        clickTolerance: 10,
+        arrowLength: 12,
+        screenWidth: 12,
+        dribbleAmplitude: 8,
+        dribbleFrequency: 5,
+        dribbleSegmentLength: 10,
+        shootLineOffset: 4,
+        passLineDash: [5, 10]
+      },
+      animation: { speed: 1500, fps: 30, finalFrameHold: 2000 },
+      interaction: {
+        clickTolerance: 10,
+        doubleClickTime: 450,
+        longPressTime: 500
+      },
+      history: { maxStates: 50, noteDebounceDelay: 500 },
+      video: { mimeType: 'video/webm', fps: 30 },
+      images: {
+        halfCourt: 'images/halfcourt.webp',
+        fullCourt: 'images/fullcourt.webp'
       }
-    },
-    line: {
-      color: '#343a40',
-      selectedColor: '#e74c3c',
-      hoverColor: '#2980b9',
-      width: 3,
-      clickTolerance: 10,
-      arrowLength: 12,
-      screenWidth: 12,
-      dribbleAmplitude: 8,
-      dribbleFrequency: 5,
-      dribbleSegmentLength: 10,
-      shootLineOffset: 4,
-      passLineDash: [5, 10]
-    },
-    animation: { speed: 1500, fps: 30, finalFrameHold: 2000 },
-    interaction: {
-      clickTolerance: 10,
-      doubleClickTime: 450,   // more forgiving double-click/tap
-      longPressTime: 500
-    },
-    history: { maxStates: 50, noteDebounceDelay: 500 },
-    video: { mimeType: 'video/webm', fps: 30 },
-    images: {
-      halfCourt: 'images/halfcourt.webp',
-      fullCourt: 'images/fullcourt.webp'
+    };
+
+    // ========================================================================
+    // DOM REFERENCES
+    // ========================================================================
+    this.dom = {
+      canvas: document.getElementById('play-canvas'),
+      instructionText: document.getElementById('instruction-text'),
+      playNameInput: document.getElementById('play-name'),
+      courtToggle: document.getElementById('court-toggle'),
+      clearFrameBtn: document.getElementById('clear-frame'),
+      saveBtn: document.getElementById('save-play'),
+      loadBtn: document.getElementById('load-play'),
+      loadFileInput: document.getElementById('load-file-input'),
+      animateBtn: document.getElementById('animate-play'),
+      exportVideoBtn: document.getElementById('export-video-btn'),
+      exportPdfBtn: document.getElementById('export-pdf'),
+      newPlayBtn: document.getElementById('new-play'),
+      addFrameBtn: document.getElementById('add-frame'),
+      deleteFrameBtn: document.getElementById('delete-frame'),
+      undoBtn: document.getElementById('undo-btn'),
+      redoBtn: document.getElementById('redo-btn'),
+      frameList: document.getElementById('frame-list'),
+      frameNotes: document.getElementById('frame-notes'),
+      loadingOverlay: document.getElementById('loading-overlay'),
+      loadingText: document.getElementById('loading-text'),
+      playerToolIcons: document.querySelectorAll('.player-tool-icon'),
+      actionWheel: document.getElementById('action-wheel'),
+      wheelButtons: document.querySelectorAll('.wheel-button'),
+      courtContainer: document.getElementById('court-container')
+    };
+
+    // ========================================================================
+    // APPLICATION STATE
+    // ========================================================================
+    this.ctx = this.dom.canvas.getContext('2d');
+    this.halfCourtImg = null;
+    this.fullCourtImg = null;
+    this.lineIdCounter = 1;
+    this.state = this.createInitialState();
+
+    // ========================================================================
+    // INITIALIZATION
+    // ========================================================================
+    this.init();
+  }
+
+  /**
+   * Primary initialization sequence.
+   * Loads images, binds events, and performs the first render.
+   */
+  async init() {
+    this.dom.canvas.width = this.config.canvas.width;
+    this.dom.canvas.height = this.config.canvas.height;
+
+    try {
+      [this.halfCourtImg, this.fullCourtImg] = await Promise.all([
+        this.loadImage(this.config.images.halfCourt),
+        this.loadImage(this.config.images.fullCourt)
+      ]);
+    } catch (error) {
+      console.error('Image loading error:', error);
+      this.showAlert(`${error.message}. Please ensure court images are in 'images' folder.`);
     }
-  };
 
-  // ============================================================================
-  // DOM REFERENCES
-  // ============================================================================
-  const DOM = {
-    canvas: document.getElementById('play-canvas'),
-    instructionText: document.getElementById('instruction-text'),
-    playNameInput: document.getElementById('play-name'),
-    courtToggle: document.getElementById('court-toggle'),
-    clearFrameBtn: document.getElementById('clear-frame'),
-    saveBtn: document.getElementById('save-play'),
-    loadBtn: document.getElementById('load-play'),
-    loadFileInput: document.getElementById('load-file-input'),
-    animateBtn: document.getElementById('animate-play'),
-    exportVideoBtn: document.getElementById('export-video-btn'),
-    exportPdfBtn: document.getElementById('export-pdf'),
-    newPlayBtn: document.getElementById('new-play'),
-    addFrameBtn: document.getElementById('add-frame'),
-    deleteFrameBtn: document.getElementById('delete-frame'),
-    undoBtn: document.getElementById('undo-btn'),
-    redoBtn: document.getElementById('redo-btn'),
-    frameList: document.getElementById('frame-list'),
-    frameNotes: document.getElementById('frame-notes'),
-    loadingOverlay: document.getElementById('loading-overlay'),
-    loadingText: document.getElementById('loading-text'),
-    playerToolIcons: document.querySelectorAll('.player-tool-icon'),
-    actionWheel: document.getElementById('action-wheel'),
-    wheelButtons: document.querySelectorAll('.wheel-button'),
-    courtContainer: document.getElementById('court-container')
-  };
-  const ctx = DOM.canvas.getContext('2d');
-
-  // ============================================================================
-  // IMAGE LOADING
-  // ============================================================================
-  function loadImage(src) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`Failed to load: ${src}`));
-      img.src = src;
-    });
-  }
-  let halfCourtImg, fullCourtImg;
-  try {
-    [halfCourtImg, fullCourtImg] = await Promise.all([
-      loadImage(CONFIG.images.halfCourt),
-      loadImage(CONFIG.images.fullCourt)
-    ]);
-  } catch (error) {
-    console.error('Image loading error:', error);
-    showAlert(`${error.message}. Please ensure court images are in 'images' folder.`);
+    this.bindEventHandlers();
+    this.initializeToolboxIcons();
+    this.initializeActionWheelIcons();
+    this.renderFrameList();
+    this.draw();
+    this.setInstruction('Drag a player onto the court to begin');
+    this.updateHistoryButtons();
+    console.log('✅ Basketball Playmaker Pro (Master 4.0) initialized');
   }
 
-  // ============================================================================
-  // APPLICATION STATE
-  // ============================================================================
-  const createNewFrame = (id) => ({ id, notes: '', players: [], lines: [] });
+  // ==========================================================================
+  // STATE & HISTORY
+  // ==========================================================================
 
-  const copyFrames = (frames) => {
-    try { return structuredClone(frames); }
-    catch { return JSON.parse(JSON.stringify(frames)); }
-  };
-
-  const createInitialState = () => {
-    const initialFrames = [createNewFrame(1)];
+  createInitialState() {
+    const initialFrames = [this.createNewFrame(1)];
     return {
       courtType: 'half',
       activeLineTool: null,
@@ -132,77 +142,139 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentFrameIndex: 0,
       nextFrameId: 2,
       nextPlayerId: 1,
-
-      // drag interaction
       isDragging: false,
       draggingPlayer: null,
       dragStartX: 0, dragStartY: 0,
       dragOffsetX: 0, dragOffsetY: 0,
-      // wasWheelVisibleBeforeDrag: false, // [FIX] This state is no longer needed
-
-      // drawing interaction
       isDrawingLine: false,
       previewLine: null,
       lastClickTime: 0,
       clickTimerId: null,
-
-      // selection/hover
       selectedPlayerId: null,
       selectedLineId: null,
       hoverLineId: null,
-
-      // animation/export
       isAnimating: false,
       isExporting: false,
       animationFrameId: null,
       animationStartTime: 0,
       currentFramePlaying: 0,
-
-      // history
-      history: [copyFrames(initialFrames)],
+      history: [this.copyFrames(initialFrames)],
       historyIndex: 0,
       noteDebounceTimer: null,
-
       pendingRedraw: false
     };
-  };
+  }
 
-  let appState = createInitialState();
-  let lineIdCounter = 1;
+  createNewFrame(id) {
+    return { id, notes: '', players: [], lines: [] };
+  }
 
-  // ============================================================================
-  // CANVAS SETUP
-  // ============================================================================
-  DOM.canvas.width = CONFIG.canvas.width;
-  DOM.canvas.height = CONFIG.canvas.height;
+  copyFrames(frames) {
+    try { return structuredClone(frames); }
+    catch { return JSON.parse(JSON.stringify(frames)); }
+  }
 
-  // ============================================================================
-  // UI FEEDBACK FUNCTIONS
-  // ============================================================================
-  function showAlert(message) {
-    DOM.loadingText.textContent = message;
-    DOM.loadingOverlay.classList.remove('hidden');
-    DOM.loadingOverlay.onclick = () => {
-      DOM.loadingOverlay.classList.add('hidden');
-      DOM.loadingOverlay.onclick = null;
+  updateHistoryButtons() {
+    this.dom.undoBtn.disabled = this.state.historyIndex <= 0;
+    this.dom.redoBtn.disabled = this.state.historyIndex >= this.state.history.length - 1;
+  }
+
+  saveState() {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    if (this.state.historyIndex < this.state.history.length - 1) {
+      this.state.history = this.state.history.slice(0, this.state.historyIndex + 1);
+    }
+    if (this.state.history.length >= this.config.history.maxStates) {
+      this.state.history.shift();
+      this.state.historyIndex--;
+    }
+    this.state.history.push(this.copyFrames(this.state.frames));
+    this.state.historyIndex++;
+    this.updateHistoryButtons();
+  }
+
+  undo() {
+    if (this.state.historyIndex > 0) {
+      this.state.historyIndex--;
+      this.state.frames = this.copyFrames(this.state.history[this.state.historyIndex]);
+      this.switchFrame(this.state.currentFrameIndex);
+      this.updateHistoryButtons();
+    }
+  }
+
+  redo() {
+    if (this.state.historyIndex < this.state.history.length - 1) {
+      this.state.historyIndex++;
+      this.state.frames = this.copyFrames(this.state.history[this.state.historyIndex]);
+      this.switchFrame(this.state.currentFrameIndex);
+      this.updateHistoryButtons();
+    }
+  }
+
+  // ==========================================================================
+  // UI & FEEDBACK
+  // ==========================================================================
+
+  showAlert(message) {
+    this.dom.loadingText.textContent = message;
+    this.dom.loadingOverlay.classList.remove('hidden');
+    this.dom.loadingOverlay.onclick = () => {
+      this.dom.loadingOverlay.classList.add('hidden');
+      this.dom.loadingOverlay.onclick = null;
     };
   }
-  function showLoading(message) {
-    DOM.loadingText.textContent = message;
-    DOM.loadingOverlay.classList.remove('hidden');
-    DOM.loadingOverlay.onclick = null;
-  }
-  function hideLoading() {
-    DOM.loadingOverlay.classList.add('hidden');
-  }
-  function setInstruction(message) {
-    DOM.instructionText.textContent = message;
+
+  showLoading(message) {
+    this.dom.loadingText.textContent = message;
+    this.dom.loadingOverlay.classList.remove('hidden');
+    this.dom.loadingOverlay.onclick = null;
   }
 
-  // ============================================================================
-  // DRAWING FUNCTIONS
-  // ============================================================================
-  function drawToolboxIcon(iconCanvas) {
+  hideLoading() {
+    this.dom.loadingOverlay.classList.add('hidden');
+  }
+
+  setInstruction(message) {
+    this.dom.instructionText.textContent = message;
+  }
+
+  renderFrameList() {
+    this.dom.frameList.innerHTML = '';
+    this.state.frames.forEach((frame, index) => {
+      const frameEl = document.createElement('div');
+      frameEl.className = 'frame-thumbnail';
+      const label = document.createElement('div');
+      label.className = 'frame-thumbnail-label';
+      label.textContent = `Frame ${index + 1}`;
+      frameEl.appendChild(label);
+      frameEl.dataset.frameId = frame.id;
+
+      if (index === this.state.currentFrameIndex && !this.state.isAnimating) frameEl.classList.add('active');
+      if (index === this.state.currentFramePlaying && this.state.isAnimating) frameEl.classList.add('active');
+
+      this.dom.frameList.appendChild(frameEl);
+    });
+  }
+
+  // ==========================================================================
+  // DRAWING & CANVAS
+  // ==========================================================================
+
+  /**
+   * Asynchronously loads an image from a source URL.
+   * @param {string} src - The path to the image.
+   * @returns {Promise<HTMLImageElement>} A promise that resolves with the loaded image.
+   */
+  loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`Failed to load: ${src}`));
+      img.src = src;
+    });
+  }
+
+  drawToolboxIcon(iconCanvas) {
     const label = iconCanvas.dataset.player;
     const isOffense = !label.startsWith('X');
     const toolCtx = iconCanvas.getContext('2d');
@@ -213,7 +285,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     toolCtx.clearRect(0, 0, size, size);
     toolCtx.beginPath();
     toolCtx.arc(center, center, radius, 0, 2 * Math.PI);
-    toolCtx.fillStyle = isOffense ? CONFIG.player.colors.offense : CONFIG.player.colors.defense;
+    toolCtx.fillStyle = isOffense ? this.config.player.colors.offense : this.config.player.colors.defense;
     toolCtx.fill();
     toolCtx.strokeStyle = '#000000';
     toolCtx.lineWidth = 2;
@@ -225,18 +297,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     toolCtx.textBaseline = 'middle';
     toolCtx.fillText(label, center, center);
   }
-  function initializeToolboxIcons() {
-    DOM.playerToolIcons.forEach(icon => {
+
+  initializeToolboxIcons() {
+    this.dom.playerToolIcons.forEach(icon => {
       icon.width = 40;
       icon.height = 40;
-      drawToolboxIcon(icon);
+      this.drawToolboxIcon(icon);
     });
   }
 
-  function drawWheelIcon(button) {
+  drawWheelIcon(button) {
     const tool = button.dataset.tool;
-
-    // Tooltips (shortcuts)
     const titles = {
       'cut': 'Cut/Move (M)',
       'pass': 'Pass (P)',
@@ -256,7 +327,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const start = { x: 8, y: 20 };
     const end = { x: 32, y: 20 };
 
-    iconCtx.strokeStyle = CONFIG.line.color;
+    iconCtx.strokeStyle = this.config.line.color;
     iconCtx.lineWidth = 3;
     iconCtx.lineCap = 'round';
 
@@ -334,113 +405,106 @@ document.addEventListener('DOMContentLoaded', async () => {
         break;
     }
   }
-  function initializeActionWheelIcons() {
-    DOM.wheelButtons.forEach(drawWheelIcon);
+
+  initializeActionWheelIcons() {
+    this.dom.wheelButtons.forEach(this.drawWheelIcon.bind(this));
   }
 
-  function drawPlayerAt(player, x, y, hasBall) {
-    // [FIX] Removed redundant blue highlight circle (Bug 2/2).
-    // The radial menu is now the only selection indicator.
+  drawPlayerAt(player, x, y, hasBall) {
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, player.radius, 0, 2 * Math.PI);
+    this.ctx.fillStyle = player.isOffense ? this.config.player.colors.offense : this.config.player.colors.defense;
+    this.ctx.fill();
+    this.ctx.strokeStyle = '#000000';
+    this.ctx.lineWidth = 2;
+    this.ctx.stroke();
 
-    ctx.beginPath();
-    ctx.arc(x, y, player.radius, 0, 2 * Math.PI);
-    ctx.fillStyle = player.isOffense ? CONFIG.player.colors.offense : CONFIG.player.colors.defense;
-    ctx.fill();
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.fillStyle = 'white';
-    ctx.font = 'bold 14px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(player.label, x, y);
+    this.ctx.fillStyle = 'white';
+    this.ctx.font = 'bold 14px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(player.label, x, y);
 
     if (hasBall) {
-      ctx.beginPath();
-      ctx.arc(x, y, player.radius + CONFIG.player.ballIndicatorOffset, 0, 2 * Math.PI);
-      ctx.strokeStyle = CONFIG.player.colors.ballHolder;
-      ctx.lineWidth = 3;
-      ctx.stroke();
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, player.radius + this.config.player.ballIndicatorOffset, 0, 2 * Math.PI);
+      this.ctx.strokeStyle = this.config.player.colors.ballHolder;
+      this.ctx.lineWidth = 3;
+      this.ctx.stroke();
     }
   }
-  function drawPlayers(players) {
+
+  drawPlayers(players) {
     players.forEach(player => {
-      drawPlayerAt(player, player.x, player.y, player.hasBall);
+      this.drawPlayerAt(player, player.x, player.y, player.hasBall);
     });
   }
 
-  function drawAnimatedBall(x, y) {
-    ctx.beginPath();
-    ctx.arc(x, y, CONFIG.player.radius / 2, 0, 2 * Math.PI);
-    ctx.fillStyle = CONFIG.player.colors.ballAnimation;
-    ctx.fill();
+  drawAnimatedBall(x, y) {
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, this.config.player.radius / 2, 0, 2 * Math.PI);
+    this.ctx.fillStyle = this.config.player.colors.ballAnimation;
+    this.ctx.fill();
 
-    ctx.beginPath();
-    ctx.arc(x, y, CONFIG.player.radius + CONFIG.player.ballIndicatorOffset, 0, 2 * Math.PI);
-    ctx.strokeStyle = CONFIG.player.colors.ballHolder;
-    ctx.lineWidth = 3;
-    ctx.stroke();
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, this.config.player.radius + this.config.player.ballIndicatorOffset, 0, 2 * Math.PI);
+    this.ctx.strokeStyle = this.config.player.colors.ballHolder;
+    this.ctx.lineWidth = 3;
+    this.ctx.stroke();
   }
 
-function drawArrowhead(end, angle) {
-    const L = CONFIG.line.arrowLength;
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(end.x, end.y);
-    ctx.lineTo(end.x - L * Math.cos(angle - Math.PI / 6), end.y - L * Math.sin(angle - Math.PI / 6));
-    ctx.moveTo(end.x, end.y);
-    ctx.lineTo(end.x - L * Math.cos(angle + Math.PI / 6), end.y - L * Math.sin(angle + Math.PI / 6));
-    ctx.stroke();
+  drawArrowhead(end, angle) {
+    const L = this.config.line.arrowLength;
+    this.ctx.setLineDash([]);
+    this.ctx.beginPath();
+    this.ctx.moveTo(end.x, end.y);
+    this.ctx.lineTo(end.x - L * Math.cos(angle - Math.PI / 6), end.y - L * Math.sin(angle - Math.PI / 6));
+    this.ctx.moveTo(end.x, end.y);
+    this.ctx.lineTo(end.x - L * Math.cos(angle + Math.PI / 6), end.y - L * Math.sin(angle + Math.PI / 6));
+    this.ctx.stroke();
   }
 
-  function drawScreenEnd(end, angle) {
-    const W = CONFIG.line.screenWidth;
-    ctx.beginPath();
+  drawScreenEnd(end, angle) {
+    const W = this.config.line.screenWidth;
+    this.ctx.beginPath();
     const x1 = end.x - W * Math.sin(angle), y1 = end.y + W * Math.cos(angle);
     const x2 = end.x + W * Math.sin(angle), y2 = end.y - W * Math.cos(angle);
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
+    this.ctx.moveTo(x1, y1);
+    this.ctx.lineTo(x2, y2);
+    this.ctx.stroke();
   }
 
-  /**
-   * [FIX] Corrected algorithm to apply perpendicular sinusoidal offset to a linear path.
-   */
-  function drawDribbleLine(start, end) {
+  drawDribbleLine(start, end) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist === 0) return;
 
     const angle = Math.atan2(dy, dx);
-    const segments = Math.floor(dist / CONFIG.line.dribbleSegmentLength);
-    const amplitude = CONFIG.line.dribbleAmplitude;
-    const frequency = CONFIG.line.dribbleFrequency;
+    const segments = Math.floor(dist / this.config.line.dribbleSegmentLength);
+    const amplitude = this.config.line.dribbleAmplitude;
+    const frequency = this.config.line.dribbleFrequency;
 
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
+    this.ctx.beginPath();
+    this.ctx.moveTo(start.x, start.y);
     for (let i = 1; i <= segments; i++) {
-      const t = i / segments; // [FIX] Was i / 5
+      const t = i / segments;
       const x_linear = start.x + dx * t;
       const y_linear = start.y + dy * t;
-      
+
       const offset = Math.sin(t * Math.PI * frequency) * amplitude;
       const offsetX = Math.sin(angle) * offset;
       const offsetY = -Math.cos(angle) * offset;
-      
-      ctx.lineTo(x_linear + offsetX, y_linear + offsetY); // [FIX] Apply offset to linear point
+
+      this.ctx.lineTo(x_linear + offsetX, y_linear + offsetY);
     }
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-    drawArrowhead(end, angle);
+    this.ctx.lineTo(end.x, end.y);
+    this.ctx.stroke();
+    this.drawArrowhead(end, angle);
   }
 
-  /**
-   * Draw lines with safe end snapping and visual states (hover/selected).
-   */
-  function drawLines(lines) {
-    const currentFrame = appState.frames[appState.currentFrameIndex];
+  drawLines(lines) {
+    const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return;
     const playerMap = new Map(currentFrame.players.map(p => [p.id, p]));
 
@@ -448,33 +512,31 @@ function drawArrowhead(end, angle) {
       const { type, points, endPlayerId, id } = line;
       if (points.length < 2) return;
 
-      const isSelected = id === appState.selectedLineId;
-      const isHovered = id === appState.hoverLineId && !isSelected;
+      const isSelected = id === this.state.selectedLineId;
+      const isHovered = id === this.state.hoverLineId && !isSelected;
 
-      ctx.strokeStyle = isSelected ? CONFIG.line.selectedColor
-                     : isHovered ? CONFIG.line.hoverColor
-                     : CONFIG.line.color;
-      ctx.lineWidth = isSelected ? CONFIG.line.width + 2
-                  : isHovered ? CONFIG.line.width + 1
-                  : CONFIG.line.width;
-      ctx.lineCap = 'round';
-      if (isSelected) { ctx.shadowColor = CONFIG.line.selectedColor; ctx.shadowBlur = 8; }
+      this.ctx.strokeStyle = isSelected ? this.config.line.selectedColor
+                     : isHovered ? this.config.line.hoverColor
+                     : this.config.line.color;
+      this.ctx.lineWidth = isSelected ? this.config.line.width + 2
+                  : isHovered ? this.config.line.width + 1
+                  : this.config.line.width;
+      this.ctx.lineCap = 'round';
+      if (isSelected) { this.ctx.shadowColor = this.config.line.selectedColor; this.ctx.shadowBlur = 8; }
 
       for (let i = 0; i < points.length - 1; i++) {
         const start = points[i];
         let end = { ...points[i + 1] };
         const originalEnd = { ...end };
 
-        // Pull back final segment so arrowhead is visible outside end player's circle
         if (i === points.length - 2 && endPlayerId) {
           const endPlayer = playerMap.get(endPlayerId);
           if (endPlayer) {
             const dx = end.x - start.x;
             const dy = end.y - start.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
-            const margin =
-              (type === 'screen' || type === 'shoot') ? 4 : (CONFIG.line.arrowLength + 2);
-            const pullBack = CONFIG.player.radius + margin;
+            const margin = (type === 'screen' || type === 'shoot') ? 4 : (this.config.line.arrowLength + 2);
+            const pullBack = this.config.player.radius + margin;
             if (dist > pullBack) {
               const ratio = (dist - pullBack) / dist;
               end.x = start.x + dx * ratio;
@@ -483,100 +545,246 @@ function drawArrowhead(end, angle) {
           }
         }
 
-        // Special rendering for shoot lines (double line)
         if (type === 'shoot') {
           const angle = Math.atan2(originalEnd.y - start.y, originalEnd.x - start.x);
-          const offset = CONFIG.line.shootLineOffset;
-          // [FIX] Define both endpoints for arrowheads
+          const offset = this.config.line.shootLineOffset;
           const end1 = { x: end.x + Math.sin(angle) * offset, y: end.y - Math.cos(angle) * offset };
           const end2 = { x: end.x - Math.sin(angle) * offset, y: end.y + Math.cos(angle) * offset };
 
-          ctx.setLineDash([]);
-          ctx.beginPath();
-          ctx.moveTo(start.x + Math.sin(angle) * offset, start.y - Math.cos(angle) * offset);
-          ctx.lineTo(end1.x, end1.y);
-          ctx.stroke();
+          this.ctx.setLineDash([]);
+          this.ctx.beginPath();
+          this.ctx.moveTo(start.x + Math.sin(angle) * offset, start.y - Math.cos(angle) * offset);
+          this.ctx.lineTo(end1.x, end1.y);
+          this.ctx.stroke();
 
-          ctx.beginPath();
-          ctx.moveTo(start.x - Math.sin(angle) * offset, start.y + Math.cos(angle) * offset);
-          ctx.lineTo(end2.x, end2.y);
-          ctx.stroke();
+          this.ctx.beginPath();
+          this.ctx.moveTo(start.x - Math.sin(angle) * offset, start.y + Math.cos(angle) * offset);
+          this.ctx.lineTo(end2.x, end2.y);
+          this.ctx.stroke();
 
-          drawArrowhead(end1, angle); // [FIX] Draw first arrowhead
-          drawArrowhead(end2, angle); // [FIX] Draw second arrowhead
+          this.drawArrowhead(end1, angle);
+          this.drawArrowhead(end2, angle);
           continue;
         }
 
-        // Line styling by type
-        if (type === 'pass') ctx.setLineDash(CONFIG.line.passLineDash);
-        else ctx.setLineDash([]);
+        if (type === 'pass') this.ctx.setLineDash(this.config.line.passLineDash);
+        else this.ctx.setLineDash([]);
 
         if (type === 'dribble') {
-          // Note: drawDribbleLine handles its own beginPath, stroke, and arrowhead
-          drawDribbleLine(start, end);
+          this.drawDribbleLine(start, end);
         } else {
-          ctx.beginPath();
-          ctx.moveTo(start.x, start.y);
-          ctx.lineTo(end.x, end.y);
-          ctx.stroke();
+          this.ctx.beginPath();
+          this.ctx.moveTo(start.x, start.y);
+          this.ctx.lineTo(end.x, end.y);
+          this.ctx.stroke();
         }
-        ctx.setLineDash([]);
+        this.ctx.setLineDash([]);
 
-        // Endpoint indicator for final segment (skip for dribble as it's handled)
         if (i === points.length - 2 && type !== 'dribble') {
           const angle = Math.atan2(originalEnd.y - start.y, originalEnd.x - start.x);
-          if (type === 'screen') drawScreenEnd(end, angle);
-          else drawArrowhead(end, angle);
+          if (type === 'screen') this.drawScreenEnd(end, angle);
+          else this.drawArrowhead(end, angle);
         }
       }
-      ctx.shadowBlur = 0;
+      this.ctx.shadowBlur = 0;
     });
-    ctx.setLineDash([]);
+    this.ctx.setLineDash([]);
   }
 
-  function draw() {
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+  /**
+   * Main render loop. Clears canvas, draws court, lines, and players.
+   */
+  draw() {
+    this.ctx.fillStyle = 'white';
+    this.ctx.fillRect(0, 0, this.config.canvas.width, this.config.canvas.height);
 
-    const courtImg = appState.courtType === 'half' ? halfCourtImg : fullCourtImg;
+    const courtImg = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
     if (courtImg && courtImg.complete) {
-      ctx.drawImage(courtImg, 0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+      this.ctx.drawImage(courtImg, 0, 0, this.config.canvas.width, this.config.canvas.height);
     }
 
-    const currentFrame = appState.frames[appState.currentFrameIndex];
+    const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return;
 
-    drawLines(currentFrame.lines);
-    if (appState.previewLine) {
-      drawLines([appState.previewLine]);
+    this.drawLines(currentFrame.lines);
+    if (this.state.previewLine) {
+      this.drawLines([this.state.previewLine]);
     }
-    drawPlayers(currentFrame.players);
+    this.drawPlayers(currentFrame.players);
   }
 
-  function scheduleDraw() {
-    if (!appState.pendingRedraw) {
-      appState.pendingRedraw = true;
+  /**
+   * Schedules a draw call using requestAnimationFrame to prevent layout thrashing.
+   */
+  scheduleDraw() {
+    if (!this.state.pendingRedraw) {
+      this.state.pendingRedraw = true;
       requestAnimationFrame(() => {
-        draw();
-        appState.pendingRedraw = false;
+        this.draw();
+        this.state.pendingRedraw = false;
       });
     }
   }
 
-  // ============================================================================
-  // GEOMETRY & HIT TESTING
-  // ============================================================================
-  function getMousePos(e) {
-    const rect = DOM.canvas.getBoundingClientRect();
+  // ==========================================================================
+  // CORE LOGIC & ACTIONS
+  // ==========================================================================
+
+  switchFrame(newFrameIndex) {
+    if (newFrameIndex < 0 || newFrameIndex >= this.state.frames.length) {
+      newFrameIndex = Math.max(0, this.state.frames.length - 1);
+    }
+    this.state.currentFrameIndex = newFrameIndex;
+
+    if (this.state.frames.length > 0 && this.state.frames[newFrameIndex]) {
+      this.renderFrameList();
+      this.draw();
+      this.dom.frameNotes.value = this.state.frames[newFrameIndex].notes;
+    } else {
+      this.handleNewPlay(false);
+    }
+  }
+
+  showActionWheel(player, viewportX, viewportY) {
+    this.state.selectedPlayerId = player.id;
+    const courtRect = this.dom.courtContainer.getBoundingClientRect();
+    const canvasRect = this.dom.canvas.getBoundingClientRect();
+    const canvasLeftInContainer = canvasRect.left - courtRect.left;
+    const canvasTopInContainer = canvasRect.top - courtRect.top;
+    const playerXInContainer = canvasLeftInContainer + player.x;
+    const playerYInContainer = canvasTopInContainer + player.y;
+
+    this.dom.actionWheel.classList.remove('hidden');
+    this.dom.actionWheel.classList.add('visible');
+    const wheelWidth = this.dom.actionWheel.offsetWidth;
+    const wheelHeight = this.dom.actionWheel.offsetHeight;
+    const x = playerXInContainer - (wheelWidth / 2);
+    const y = playerYInContainer - (wheelHeight / 2);
+
+    this.dom.actionWheel.style.left = `${x}px`;
+    this.dom.actionWheel.style.top = `${y}px`;
+    this.setInstruction('Select an action from the wheel • Drag to move; release to re‑open actions');
+  }
+
+  hideActionWheel() {
+    this.state.selectedPlayerId = null;
+    this.dom.actionWheel.classList.remove('visible');
+    setTimeout(() => {
+      if (!this.dom.actionWheel.classList.contains('visible')) {
+        this.dom.actionWheel.classList.add('hidden');
+      }
+    }, 150);
+  }
+
+  hideActionWheelImmediate() {
+    this.dom.actionWheel.classList.remove('visible');
+    this.dom.actionWheel.classList.add('hidden');
+  }
+
+  /**
+   * Creates a new player on the current frame at the specified coordinates.
+   * @param {number} x - The canvas x-coordinate.
+   * @param {number} y - The canvas y-coordinate.
+   * @param {string} playerLabel - The label for the new player (e.g., "1", "X1").
+   * @returns {object|null} The new player object or null if player exists.
+   */
+  createPlayerAt(x, y, playerLabel) {
+    const currentFrame = this.state.frames[this.state.currentFrameIndex];
+    if (!currentFrame) return null;
+
+    const playerExists = currentFrame.players.some(p => p.label === playerLabel);
+    if (playerExists) {
+      this.showAlert(`Player ${playerLabel} is already on the court.`);
+      return null;
+    }
+
+    const newPlayer = {
+      id: this.state.nextPlayerId++,
+      label: playerLabel,
+      isOffense: !playerLabel.startsWith('X'),
+      x: x,
+      y: y,
+      radius: this.config.player.radius,
+      hasBall: false
+    };
+
+    currentFrame.players.push(newPlayer);
+    return newPlayer;
+  }
+
+  addWaypoint(x, y) {
+    const playerAtWaypoint = this.getPlayerAtCoord(x, y);
+    const newPoint = playerAtWaypoint ? { x: playerAtWaypoint.x, y: playerAtWaypoint.y } : { x, y };
+
+    this.state.previewLine.points.splice(this.state.previewLine.points.length - 1, 0, newPoint);
+    this.draw();
+  }
+
+  finalizePreviewLine(x, y) {
+    this.state.isDrawingLine = false;
+    const finalLine = this.state.previewLine;
+    finalLine.points.pop();
+
+    const playerAtEnd = this.getPlayerAtCoord(x, y);
+    const finalPoint = playerAtEnd ? { x: playerAtEnd.x, y: playerAtEnd.y } : { x, y };
+
+    if (finalLine.points.length > 1) {
+      const lastWaypoint = finalLine.points[finalLine.points.length - 1];
+      const dist = Math.hypot(finalPoint.x - lastWaypoint.x, finalPoint.y - lastWaypoint.y);
+      if (dist < this.config.interaction.clickTolerance) {
+        finalLine.points.pop();
+      }
+    }
+
+    if (playerAtEnd) {
+      finalLine.points.push(finalPoint);
+      finalLine.endPlayerId = playerAtEnd.id;
+    } else {
+      finalLine.points.push(finalPoint);
+    }
+
+    if (finalLine.points.length >= 2) {
+      this.state.frames[this.state.currentFrameIndex].lines.push(finalLine);
+    }
+    this.state.previewLine = null;
+    this.dom.canvas.classList.remove('drawing-line');
+    this.setInstruction('Line created! Click a player to add another action.');
+    this.draw();
+    this.saveState();
+  }
+
+  stopAnimation() {
+    if (this.state.isAnimating) {
+      if (this.state.animationFrameId) {
+        cancelAnimationFrame(this.state.animationFrameId);
+        this.state.animationFrameId = null;
+      }
+      this.state.isAnimating = false;
+      this.state.animationStartTime = 0;
+      this.dom.animateBtn.textContent = '▶️ Animate';
+      this.dom.animateBtn.classList.remove('btn-danger');
+      this.dom.animateBtn.classList.add('btn-primary');
+      this.renderFrameList();
+    }
+  }
+
+  // ==========================================================================
+  // UTILITIES (Geometry, Hit-Testing, Animation)
+  // ==========================================================================
+
+  getMousePos(e) {
+    const rect = this.dom.canvas.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top, viewportX: e.clientX, viewportY: e.clientY };
   }
-  function getTouchPos(e) {
+
+  getTouchPos(e) {
     const touch = e.touches[0] || e.changedTouches[0];
-    const rect = DOM.canvas.getBoundingClientRect();
+    const rect = this.dom.canvas.getBoundingClientRect();
     return { x: touch.clientX - rect.left, y: touch.clientY - rect.top, viewportX: touch.clientX, viewportY: touch.clientY };
   }
-  function getPlayerAtCoord(x, y) {
-    const currentFrame = appState.frames[appState.currentFrameIndex];
+
+  getPlayerAtCoord(x, y) {
+    const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return null;
     for (let i = currentFrame.players.length - 1; i >= 0; i--) {
       const p = currentFrame.players[i];
@@ -584,8 +792,9 @@ function drawArrowhead(end, angle) {
     }
     return null;
   }
-  function getLineAtCoord(x, y) {
-    const currentFrame = appState.frames[appState.currentFrameIndex];
+
+  getLineAtCoord(x, y) {
+    const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return null;
     for (const line of currentFrame.lines) {
       for (let i = 0; i < line.points.length - 1; i++) {
@@ -600,472 +809,13 @@ function drawArrowhead(end, angle) {
         const cx = p1.x + t * dx;
         const cy = p1.y + t * dy;
         const dSq = (x - cx) ** 2 + (y - cy) ** 2;
-        if (Math.sqrt(dSq) < CONFIG.line.clickTolerance) return line;
+        if (Math.sqrt(dSq) < this.config.line.clickTolerance) return line;
       }
     }
     return null;
   }
 
-  // ============================================================================
-  // FRAME MANAGEMENT
-  // ============================================================================
-  function renderFrameList() {
-    DOM.frameList.innerHTML = '';
-    appState.frames.forEach((frame, index) => {
-      const frameEl = document.createElement('div');
-      frameEl.className = 'frame-thumbnail';
-      const label = document.createElement('div');
-      label.className = 'frame-thumbnail-label';
-      label.textContent = `Frame ${index + 1}`;
-      frameEl.appendChild(label);
-      frameEl.dataset.frameId = frame.id;
-
-      if (index === appState.currentFrameIndex && !appState.isAnimating) frameEl.classList.add('active');
-      if (index === appState.currentFramePlaying && appState.isAnimating) frameEl.classList.add('active');
-
-      DOM.frameList.appendChild(frameEl);
-    });
-  }
-  function switchFrame(newFrameIndex) {
-    if (newFrameIndex < 0 || newFrameIndex >= appState.frames.length) {
-      newFrameIndex = Math.max(0, appState.frames.length - 1);
-    }
-    appState.currentFrameIndex = newFrameIndex;
-
-    if (appState.frames.length > 0 && appState.frames[newFrameIndex]) {
-      renderFrameList();
-      draw();
-      DOM.frameNotes.value = appState.frames[newFrameIndex].notes;
-    } else {
-      handleNewPlay(false);
-    }
-  }
-
-  // ============================================================================
-  // HISTORY (UNDO/REDO)
-  // ============================================================================
-  function updateHistoryButtons() {
-    DOM.undoBtn.disabled = appState.historyIndex <= 0;
-    DOM.redoBtn.disabled = appState.historyIndex >= appState.history.length - 1;
-  }
-  function saveState() {
-    if (appState.isAnimating || appState.isExporting) return;
-    if (appState.historyIndex < appState.history.length - 1) {
-      appState.history = appState.history.slice(0, appState.historyIndex + 1);
-    }
-    if (appState.history.length >= CONFIG.history.maxStates) {
-      appState.history.shift();
-      appState.historyIndex--;
-    }
-    appState.history.push(copyFrames(appState.frames));
-    appState.historyIndex++;
-    updateHistoryButtons();
-  }
-  function undo() {
-    if (appState.historyIndex > 0) {
-      appState.historyIndex--;
-      appState.frames = copyFrames(appState.history[appState.historyIndex]);
-      switchFrame(appState.currentFrameIndex);
-      updateHistoryButtons();
-    }
-  }
-  function redo() {
-    if (appState.historyIndex < appState.history.length - 1) {
-      appState.historyIndex++;
-      appState.frames = copyFrames(appState.history[appState.historyIndex]);
-      switchFrame(appState.currentFrameIndex);
-      updateHistoryButtons();
-    }
-  }
-
-  // ============================================================================
-  // RADIAL ACTION WHEEL
-  // ============================================================================
-  /**
-   * [FIX] Centers the wheel on the player icon, not the mouse cursor.
-   */
-  function showActionWheel(player, viewportX, viewportY) {
-    appState.selectedPlayerId = player.id;
-
-    // Get positions of canvas and its container
-    const courtRect = DOM.courtContainer.getBoundingClientRect();
-    const canvasRect = DOM.canvas.getBoundingClientRect();
-
-    // Calculate canvas offset *within* the container
-    const canvasLeftInContainer = canvasRect.left - courtRect.left;
-    const canvasTopInContainer = canvasRect.top - courtRect.top;
-
-    // Calculate player's center position *relative to the container*
-    const playerXInContainer = canvasLeftInContainer + player.x;
-    const playerYInContainer = canvasTopInContainer + player.y;
-
-    // Make visible *before* measuring to ensure offsetWidth/Height are correct
-    DOM.actionWheel.classList.remove('hidden');
-    DOM.actionWheel.classList.add('visible');
-
-    const wheelWidth = DOM.actionWheel.offsetWidth;
-    const wheelHeight = DOM.actionWheel.offsetHeight;
-
-    // Calculate wheel's top-left to center it on the player
-    const x = playerXInContainer - (wheelWidth / 2);
-    const y = playerYInContainer - (wheelHeight / 2);
-
-    DOM.actionWheel.style.left = `${x}px`;
-    DOM.actionWheel.style.top = `${y}px`;
-
-    setInstruction('Select an action from the wheel • Drag to move; release to re‑open actions');
-  }
-  function hideActionWheel() {
-    appState.selectedPlayerId = null;
-    DOM.actionWheel.classList.remove('visible');
-    setTimeout(() => {
-      if (!DOM.actionWheel.classList.contains('visible')) {
-        DOM.actionWheel.classList.add('hidden');
-      }
-    }, 150);
-  }
-  // Immediate hide (used on drag start)
-  function hideActionWheelImmediate() {
-    // [FIX] Do not set selectedPlayerId to null here, only hide the DOM element
-    // appState.selectedPlayerId = null;
-    DOM.actionWheel.classList.remove('visible');
-    DOM.actionWheel.classList.add('hidden');
-  }
-
-function handleWheelAction(tool) {
-    const currentFrame = appState.frames[appState.currentFrameIndex];
-    const player = currentFrame.players.find(p => p.id === appState.selectedPlayerId);
-    if (!player) return;
-
-    hideActionWheelImmediate();
-
-    if (tool === 'delete') {
-      currentFrame.players = currentFrame.players.filter(p => p.id !== player.id);
-      currentFrame.lines = currentFrame.lines.filter(line =>
-        line.startPlayerId !== player.id && line.endPlayerId !== player.id
-      );
-      appState.selectedPlayerId = null; // [FIX] Deselect after delete
-      draw();
-      saveState();
-      setInstruction('Player deleted');
-      return;
-    }
-
-    if (tool === 'assign-ball') {
-      if (player.isOffense) {
-        const currentBallHolder = currentFrame.players.find(p => p.hasBall);
-        if (currentBallHolder && currentBallHolder !== player) currentBallHolder.hasBall = false;
-        player.hasBall = !player.hasBall;
-        draw();
-        saveState();
-        setInstruction(player.hasBall ? 'Ball assigned' : 'Ball removed');
-      } else {
-        setInstruction('Only offensive players can have the ball');
-      }
-      return;
-    }
-
-    // start drawing a line
-    if (['shoot', 'pass'].includes(tool) && !player.hasBall) {
-      setInstruction("That player doesn't have the ball!");
-      return;
-    }
-    // Remove any existing start lines for this player to avoid overlap
-    currentFrame.lines = currentFrame.lines.filter(l => l.startPlayerId !== player.id);
-
-    appState.isDrawingLine = true;
-    appState.activeLineTool = tool;
-    appState.previewLine = {
-      id: lineIdCounter++,
-      type: tool,
-      startPlayerId: player.id,
-      points: [{ x: player.x, y: player.y }, { x: player.x, y: player.y }]
-    };
-    setInstruction(`Drawing ${tool}. Single‑click to add waypoints, double‑click to finish.`);
-    DOM.canvas.classList.add('drawing-line');
-    draw();
-  }
-
-  // ============================================================================
-  // FILE OPERATIONS
-  // ============================================================================
-  function handleSave() {
-    if (appState.isAnimating || appState.isExporting) return;
-    const playName = DOM.playNameInput.value || 'Untitled Play';
-    const filename = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
-    const saveData = {
-      playName,
-      courtType: appState.courtType,
-      frames: appState.frames,
-      nextFrameId: appState.nextFrameId,
-      nextPlayerId: appState.nextPlayerId
-    };
-    try {
-      const jsonString = JSON.stringify(saveData, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Save error:', error);
-      showAlert('Failed to save play.');
-    }
-  }
-
-  function handleLoad(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const loadedData = JSON.parse(event.target.result);
-        if (!loadedData.frames || !Array.isArray(loadedData.frames)) {
-          throw new Error('Invalid play file format');
-        }
-        handleNewPlay(false);
-        appState.courtType = loadedData.courtType || 'half';
-        appState.frames = loadedData.frames;
-        appState.nextFrameId = loadedData.nextFrameId || (appState.frames.length + 1);
-
-        if (loadedData.nextPlayerId) {
-          appState.nextPlayerId = loadedData.nextPlayerId;
-        } else {
-          const maxId = appState.frames.reduce((max, frame) => {
-            const frameMax = frame.players.reduce((pMax, p) => Math.max(pMax, p.id), 0);
-            return Math.max(max, frameMax);
-          }, 0);
-          appState.nextPlayerId = maxId + 1;
-        }
-        appState.frames.forEach(frame => {
-          frame.lines.forEach(line => { if (!line.id) line.id = lineIdCounter++; });
-        });
-
-        appState.history = [copyFrames(appState.frames)];
-        appState.historyIndex = 0;
-        updateHistoryButtons();
-        appState.currentFrameIndex = 0;
-
-        DOM.playNameInput.value = loadedData.playName || '';
-        DOM.courtToggle.value = appState.courtType;
-        switchFrame(0);
-      } catch (error) {
-        console.error('Load error:', error);
-        showAlert(`Could not load play file: ${error.message}`);
-      }
-    };
-    reader.onerror = () => {
-      console.error('File read error:', reader.error);
-      showAlert('Error reading file.');
-    };
-    reader.readText(file);
-  }
-
-  async function handleExportPDF() {
-    if (appState.isAnimating || appState.isExporting) return;
-    appState.isExporting = true;
-    DOM.exportPdfBtn.disabled = true;
-    showLoading('Generating PDF...');
-    setTimeout(() => {
-      try {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('portrait', 'mm', 'a4');
-        const originalFrameIndex = appState.currentFrameIndex;
-        const playName = DOM.playNameInput.value || 'Untitled Play';
-
-        const margin = 10;
-        const pageW = 210;
-        const pageH = 297;
-        const contentW = pageW - margin * 2;
-        const imgColW = 80;
-        const gutter = 10;
-        const notesColW = contentW - imgColW - gutter;
-        const imgColH = (imgColW / 4) * 3;
-        const frameRowH = (pageH - margin * 2) / 3;
-
-        for (let i = 0; i < appState.frames.length; i++) {
-          const frameIndexInPage = i % 3;
-          if (i > 0 && frameIndexInPage === 0) doc.addPage();
-
-          switchFrame(i);
-          const imgData = DOM.canvas.toDataURL('image/png');
-          const yPos = margin + frameIndexInPage * frameRowH + 5;
-          const imgX = margin;
-
-          doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH);
-
-          const notesX = margin + imgColW + gutter;
-          doc.setFontSize(14);
-          doc.setFont(undefined, 'bold');
-          doc.text(`Frame ${i + 1}`, notesX, yPos + 5);
-
-          doc.setFontSize(10);
-          doc.setFont(undefined, 'normal');
-          const notesText = appState.frames[i].notes || 'No notes';
-          const notesLines = doc.splitTextToSize(notesText, notesColW);
-          doc.text(notesLines, notesX, yPos + 12);
-        }
-
-        const filename = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
-        doc.save(filename);
-        switchFrame(originalFrameIndex);
-      } catch (error) {
-        console.error('PDF export error:', error);
-        showAlert(`Could not generate PDF: ${error.message}`);
-      } finally {
-        appState.isExporting = false;
-        DOM.exportPdfBtn.disabled = false;
-        hideLoading();
-      }
-    }, 100);
-  }
-
-  async function handleExportVideo() {
-    if (appState.isAnimating || appState.isExporting) return;
-    if (appState.frames.length < 2) {
-      showAlert('You need at least two frames to create a video.');
-      return;
-    }
-    if (!DOM.canvas.captureStream || !window.MediaRecorder) {
-      showAlert('Video export not supported in this browser. Use Chrome, Firefox, or Edge.');
-      return;
-    }
-    appState.isExporting = true;
-    DOM.exportVideoBtn.disabled = true;
-    showLoading('Recording Video...');
-    try {
-      const stream = DOM.canvas.captureStream(CONFIG.video.fps);
-      const recorder = new MediaRecorder(stream, { mimeType: CONFIG.video.mimeType });
-      const recordedChunks = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-      recorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: CONFIG.video.mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const playName = DOM.playNameInput.value || 'Untitled Play';
-        a.href = url;
-        a.download = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        appState.isExporting = false;
-        DOM.exportVideoBtn.disabled = false;
-        hideLoading();
-        switchFrame(0);
-      };
-      recorder.onerror = (e) => {
-        console.error('Recording error:', e);
-        showAlert('Video recording failed.');
-        appState.isExporting = false;
-        DOM.exportVideoBtn.disabled = false;
-        hideLoading();
-      };
-      recorder.start();
-
-      let frameToPlay = 0;
-      let frameStartTime = 0;
-      let holdingFinalFrame = false;
-      let finalFrameHoldStart = 0;
-
-      function recordAnimationLoop(timestamp) {
-        if (frameStartTime === 0) frameStartTime = timestamp;
-
-        if (holdingFinalFrame) {
-          if (timestamp - finalFrameHoldStart >= CONFIG.animation.finalFrameHold) {
-            recorder.stop();
-          } else {
-            requestAnimationFrame(recordAnimationLoop);
-          }
-          return;
-        }
-
-        const elapsed = timestamp - frameStartTime;
-        const progress = Math.min(1.0, elapsed / CONFIG.animation.speed);
-        const currentRecordFrame = appState.frames[frameToPlay];
-        if (!currentRecordFrame) { recorder.stop(); return; }
-
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
-        const courtImg = appState.courtType === 'half' ? halfCourtImg : fullCourtImg;
-        if (courtImg && courtImg.complete) ctx.drawImage(courtImg, 0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
-
-        drawLines(currentRecordFrame.lines);
-
-        const moveLines = new Map();
-        const passLines = new Map();
-        const shootLines = new Map();
-        currentRecordFrame.lines.forEach(line => {
-          if (!line.startPlayerId) return;
-          if (['cut', 'dribble', 'move', 'screen'].includes(line.type)) moveLines.set(line.startPlayerId, line);
-          else if (line.type === 'pass') passLines.set(line.startPlayerId, line);
-          else if (line.type === 'shoot') shootLines.set(line.startPlayerId, line);
-        });
-
-        currentRecordFrame.players.forEach(player => {
-          let drawX = player.x;
-          let drawY = player.y;
-          let hasBall = player.hasBall;
-
-          const moveLine = moveLines.get(player.id);
-          const passLine = passLines.get(player.id);
-          const shootLine = shootLines.get(player.id);
-
-          if (moveLine) {
-            const pathLength = getPathLength(moveLine.points);
-            const distanceToTravel = pathLength * progress;
-            const newPos = getPointAlongPath(moveLine.points, distanceToTravel);
-            drawX = newPos.x;
-            drawY = newPos.y;
-          }
-          if (passLine && progress < 1.0) {
-            hasBall = false;
-            const passPathLength = getPathLength(passLine.points);
-            const passDist = passPathLength * progress;
-            const ballPos = getPointAlongPath(passLine.points, passDist);
-            drawAnimatedBall(ballPos.x, ballPos.y);
-          }
-          if (shootLine && progress < 1.0) {
-            hasBall = false;
-            const shootPathLength = getPathLength(shootLine.points);
-            const shootDist = shootPathLength * progress;
-            const ballPos = getPointAlongPath(shootLine.points, shootDist);
-            drawAnimatedBall(ballPos.x, ballPos.y);
-          }
-          drawPlayerAt(player, drawX, drawY, hasBall);
-        });
-
-        if (progress < 1.0) {
-          requestAnimationFrame(recordAnimationLoop);
-        } else {
-          frameToPlay++;
-          frameStartTime = 0;
-          if (frameToPlay >= appState.frames.length) {
-            holdingFinalFrame = true;
-            finalFrameHoldStart = timestamp;
-            requestAnimationFrame(recordAnimationLoop);
-          } else {
-            requestAnimationFrame(recordAnimationLoop);
-          }
-        }
-      }
-      requestAnimationFrame(recordAnimationLoop);
-    } catch (error) {
-      console.error('Video export error:', error);
-      showAlert(`Could not record video: ${error.message}`);
-      appState.isExporting = false;
-      DOM.exportVideoBtn.disabled = false;
-      hideLoading();
-    }
-  }
-
-  // ============================================================================
-  // ANIMATION HELPERS
-  // ============================================================================
-  function getPathLength(points) {
+  getPathLength(points) {
     let totalDistance = 0;
     for (let i = 0; i < points.length - 1; i++) {
       const dx = points[i + 1].x - points[i].x;
@@ -1074,7 +824,8 @@ function handleWheelAction(tool) {
     }
     return totalDistance;
   }
-  function getPointAlongPath(points, distanceToTravel) {
+
+  getPointAlongPath(points, distanceToTravel) {
     if (distanceToTravel <= 0) return { ...points[0] };
     for (let i = 0; i < points.length - 1; i++) {
       const start = points[i];
@@ -1092,74 +843,95 @@ function handleWheelAction(tool) {
     return { ...points[points.length - 1] };
   }
 
-  // ============================================================================
-  // EVENT HANDLERS
-  // ============================================================================
+  // ==========================================================================
+  // EVENT HANDLER METHODS (Bound in constructor)
+  // ==========================================================================
 
-  /**
-   * [BUG FIX] Creates a new player object and adds it to the current frame.
-   * This function was missing, causing drag-and-drop to fail.
-   * @param {number} x - The canvas x-coordinate.
-   * @param {number} y - The canvas y-coordinate.
-   * @param {string} playerLabel - The label for the new player (e.g., "1", "X1").
-   * @returns {object|null} The newly created player object, or null if player exists.
-   */
-  function createPlayerAt(x, y, playerLabel) {
-    const currentFrame = appState.frames[appState.currentFrameIndex];
-    if (!currentFrame) return null;
+  bindEventHandlers() {
+    this.dom.newPlayBtn.addEventListener('click', () => this.handleNewPlay(true));
+    this.dom.clearFrameBtn.addEventListener('click', this.handleClearFrame.bind(this));
+    this.dom.saveBtn.addEventListener('click', this.handleSave.bind(this));
+    this.dom.loadBtn.addEventListener('click', () => this.dom.loadFileInput.click());
+    this.dom.exportPdfBtn.addEventListener('click', this.handleExportPDF.bind(this));
+    this.dom.exportVideoBtn.addEventListener('click', this.handleExportVideo.bind(this));
+    this.dom.addFrameBtn.addEventListener('click', this.handleAddFrame.bind(this));
+    this.dom.deleteFrameBtn.addEventListener('click', this.handleDeleteFrame.bind(this));
+    this.dom.undoBtn.addEventListener('click', this.undo.bind(this));
+    this.dom.redoBtn.addEventListener('click', this.redo.bind(this));
+    this.dom.animateBtn.addEventListener('click', this.handleAnimate.bind(this));
 
-    // Prevent duplicate players in the same frame
-    const playerExists = currentFrame.players.some(p => p.label === playerLabel);
-    if (playerExists) {
-      showAlert(`Player ${playerLabel} is already on the court.`);
-      return null;
-    }
+    document.addEventListener('keydown', this.handleKeyDown.bind(this));
 
-    const newPlayer = {
-      id: appState.nextPlayerId++,
-      label: playerLabel,
-      isOffense: !playerLabel.startsWith('X'),
-      x: x,
-      y: y,
-      radius: CONFIG.player.radius,
-      hasBall: false
-    };
+    this.dom.courtToggle.addEventListener('change', (e) => {
+      this.state.courtType = e.target.value;
+      this.draw();
+    });
 
-    currentFrame.players.push(newPlayer);
-    return newPlayer;
+    this.dom.frameList.addEventListener('click', this.handleFrameListClick.bind(this));
+    this.dom.frameNotes.addEventListener('input', this.handleNotesInput.bind(this));
+    this.dom.loadFileInput.addEventListener('change', this.handleLoadFile.bind(this));
+
+    // Canvas Listeners
+    this.dom.canvas.addEventListener('contextmenu', e => e.preventDefault());
+    this.dom.canvas.addEventListener('mousedown', this.handleCanvasMouseDown.bind(this));
+    this.dom.canvas.addEventListener('mousemove', this.handleCanvasMouseMove.bind(this));
+    this.dom.canvas.addEventListener('mouseup', this.handleCanvasMouseUp.bind(this));
+    this.dom.canvas.addEventListener('touchstart', this.handleCanvasTouchStart.bind(this), { passive: false });
+    this.dom.canvas.addEventListener('touchmove', this.handleCanvasTouchMove.bind(this), { passive: false });
+    this.dom.canvas.addEventListener('touchend', this.handleCanvasTouchEnd.bind(this), { passive: false });
+    this.dom.canvas.addEventListener('dragover', this.handleDragOver.bind(this));
+    this.dom.canvas.addEventListener('dragleave', this.handleDragLeave.bind(this));
+    this.dom.canvas.addEventListener('drop', this.handleDrop.bind(this));
+    this.dom.canvas.addEventListener('mouseout', () => this.dom.canvas.classList.remove('drag-over'));
+
+    // Document-level listeners for drag robustness
+    this.onDocumentMouseMove = this.onDocumentMouseMove.bind(this);
+    this.onDocumentMouseUp = this.onDocumentMouseUp.bind(this);
+
+    // Wheel actions
+    this.dom.actionWheel.addEventListener('click', this.handleWheelClick.bind(this));
+
+    // Global click listener
+    document.addEventListener('click', (e) => {
+      if (!this.dom.actionWheel.contains(e.target) &&
+          !this.dom.canvas.contains(e.target) &&
+          this.dom.actionWheel.classList.contains('visible')) {
+        this.hideActionWheel();
+      }
+    });
+
+    // Toolbox DnD
+    this.dom.playerToolIcons.forEach(icon => {
+      icon.addEventListener('dragstart', this.handlePlayerDragStart.bind(this));
+      icon.addEventListener('dragend', this.handlePlayerDragEnd.bind(this));
+    });
   }
 
-  function handleNewPlay(confirmFirst = true) {
-    if (confirmFirst && appState.frames.some(f => f.players.length > 0 || f.lines.length > 0)) {
-      // Use custom alert/confirm modal if available, fallback to browser confirm
-      if (typeof showAlert === 'function') {
-         // This app uses `confirm` directly, so we'll stick to that for consistency.
-         if (!confirm('Start new play? All unsaved progress will be lost.')) {
-           return;
-         }
-      } else if (!confirm('Start new play? All unsaved progress will be lost.')) {
+  handleNewPlay(confirmFirst = true) {
+    if (confirmFirst && this.state.frames.some(f => f.players.length > 0 || f.lines.length > 0)) {
+      if (!confirm('Start new play? All unsaved progress will be lost.')) {
         return;
       }
     }
-    if (appState.isAnimating && appState.animationFrameId) {
-      cancelAnimationFrame(appState.animationFrameId);
+    if (this.state.isAnimating && this.state.animationFrameId) {
+      cancelAnimationFrame(this.state.animationFrameId);
     }
-    appState = createInitialState();
-    lineIdCounter = 1;
-    DOM.playNameInput.value = '';
-    DOM.courtToggle.value = 'half';
-    renderFrameList();
-    switchFrame(0);
-    setInstruction('Drag a player onto the court to begin');
-    updateHistoryButtons();
+    this.state = this.createInitialState();
+    this.lineIdCounter = 1;
+    this.dom.playNameInput.value = '';
+    this.dom.courtToggle.value = 'half';
+    this.renderFrameList();
+    this.switchFrame(0);
+    this.setInstruction('Drag a player onto the court to begin');
+    this.updateHistoryButtons();
   }
 
-  function handleAddFrame() {
-    if (appState.isAnimating || appState.isExporting) return;
-    const currentFrame = appState.frames[appState.currentFrameIndex];
+  handleAddFrame() {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return;
 
-    const newFrame = createNewFrame(appState.nextFrameId++);
+    const newFrame = this.createNewFrame(this.state.nextFrameId++);
     newFrame.players = JSON.parse(JSON.stringify(currentFrame.players));
 
     let ballWasPassedOrShot = false;
@@ -1193,299 +965,128 @@ function handleWheelAction(tool) {
       passerOrShooter.hasBall = false;
     }
 
-    appState.frames.push(newFrame);
-    switchFrame(appState.frames.length - 1);
-    saveState();
+    this.state.frames.push(newFrame);
+    this.switchFrame(this.state.frames.length - 1);
+    this.saveState();
   }
 
-  function handleDeleteFrame() {
-    if (appState.isAnimating || appState.isExporting) return;
-    if (appState.frames.length <= 1) {
-      showAlert('You cannot delete the last frame.');
+  handleDeleteFrame() {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    if (this.state.frames.length <= 1) {
+      this.showAlert('You cannot delete the last frame.');
       return;
     }
-    // Use custom alert/confirm modal if available, fallback to browser confirm
-    if (typeof showAlert === 'function') {
-        // This app uses `confirm` directly, so we'll stick to that for consistency.
-        if (!confirm('Delete this frame?')) return;
-    } else if (!confirm('Delete this frame?')) {
-      return;
-    }
+    if (!confirm('Delete this frame?')) return;
 
-    const deletedFrameIndex = appState.currentFrameIndex;
-    appState.frames.splice(deletedFrameIndex, 1);
+    const deletedFrameIndex = this.state.currentFrameIndex;
+    this.state.frames.splice(deletedFrameIndex, 1);
     const newIndex = Math.max(0, deletedFrameIndex - 1);
-    switchFrame(newIndex);
-    saveState();
+    this.switchFrame(newIndex);
+    this.saveState();
   }
 
-  function handleClearFrame() {
-    if (appState.isAnimating || appState.isExporting) return;
-    // Use custom alert/confirm modal if available, fallback to browser confirm
-    if (typeof showAlert === 'function') {
-        // This app uses `confirm` directly, so we'll stick to that for consistency.
-        if (!confirm('Clear all players and lines from this frame?')) return;
-    } else if (!confirm('Clear all players and lines from this frame?')) {
-      return;
-    }
+  handleClearFrame() {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    if (!confirm('Clear all players and lines from this frame?')) return;
 
-    const currentFrame = appState.frames[appState.currentFrameIndex];
+    const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (currentFrame) {
       currentFrame.players = [];
       currentFrame.lines = [];
       currentFrame.notes = '';
-      DOM.frameNotes.value = '';
+      this.dom.frameNotes.value = '';
     }
-    draw();
-    saveState();
+    this.draw();
+    this.saveState();
   }
 
-// ----- Line drawing helpers (debounced waypoint vs. double-click) -----
-  function addWaypoint(x, y) {
-    const playerAtWaypoint = getPlayerAtCoord(x, y);
-    const newPoint = playerAtWaypoint ? { x: playerAtWaypoint.x, y: playerAtWaypoint.y } : { x, y };
-    
-    appState.previewLine.points.splice(appState.previewLine.points.length - 1, 0, newPoint);
-    
-    draw();
+  handleWheelClick(e) {
+    const button = e.target.closest('.wheel-button');
+    if (button) {
+      this.handleWheelAction(button.dataset.tool);
+    }
   }
 
-function finalizePreviewLine(x, y) {
-    appState.isDrawingLine = false;
-    const finalLine = appState.previewLine;
-    finalLine.points.pop(); 
+  handleWheelAction(tool) {
+    const currentFrame = this.state.frames[this.state.currentFrameIndex];
+    const player = currentFrame.players.find(p => p.id === this.state.selectedPlayerId);
+    if (!player) return;
 
-    const playerAtEnd = getPlayerAtCoord(x, y);
-    const finalPoint = playerAtEnd ? { x: playerAtEnd.x, y: playerAtEnd.y } : { x, y };
+    this.hideActionWheelImmediate();
 
-    if (finalLine.points.length > 1) {
-      const lastWaypoint = finalLine.points[finalLine.points.length - 1];
-      const dist = Math.hypot(finalPoint.x - lastWaypoint.x, finalPoint.y - lastWaypoint.y);
-      if (dist < CONFIG.interaction.clickTolerance) {
-        finalLine.points.pop();
-      }
-    }
-
-    if (playerAtEnd) {
-      finalLine.points.push(finalPoint);
-      finalLine.endPlayerId = playerAtEnd.id;
-    } else {
-      finalLine.points.push(finalPoint);
-    }
-
-    if (finalLine.points.length >= 2) {
-      appState.frames[appState.currentFrameIndex].lines.push(finalLine);
-    }
-    appState.previewLine = null;
-    DOM.canvas.classList.remove('drawing-line');
-    setInstruction('Line created! Click a player to add another action.');
-    draw();
-    saveState();
-  }
-
-  // ----- Unified pointer handlers -----
-  function handleCanvasPointerDown(x, y, viewportX, viewportY, e) {
-    if (appState.isAnimating || appState.isExporting) return;
-
-if (appState.isDrawingLine) {
-      const now = Date.now();
-      if (now - appState.lastClickTime < CONFIG.interaction.doubleClickTime) {
-        e.preventDefault();
-        finalizePreviewLine(x, y);
-      } else {
-        addWaypoint(x, y);
-      }
-      appState.lastClickTime = now;
+    if (tool === 'delete') {
+      currentFrame.players = currentFrame.players.filter(p => p.id !== player.id);
+      currentFrame.lines = currentFrame.lines.filter(line =>
+        line.startPlayerId !== player.id && line.endPlayerId !== player.id
+      );
+      this.state.selectedPlayerId = null;
+      this.draw();
+      this.saveState();
+      this.setInstruction('Player deleted');
       return;
     }
 
-    const clickedLine = getLineAtCoord(x, y);
-    if (clickedLine) {
-      // Highlight before confirmation
-      appState.selectedLineId = clickedLine.id;
-      draw();
-      
-      // Use custom alert/confirm modal if available, fallback to browser confirm
-      let deleteConfirmed = false;
-      if (typeof showAlert === 'function') {
-          // This app uses `confirm` directly, so we'll stick to that for consistency.
-          deleteConfirmed = confirm('Delete this action line?');
+    if (tool === 'assign-ball') {
+      if (player.isOffense) {
+        const currentBallHolder = currentFrame.players.find(p => p.hasBall);
+        if (currentBallHolder && currentBallHolder !== player) currentBallHolder.hasBall = false;
+        player.hasBall = !player.hasBall;
+        this.draw();
+        this.saveState();
+        this.setInstruction(player.hasBall ? 'Ball assigned' : 'Ball removed');
       } else {
-          deleteConfirmed = confirm('Delete this action line?');
-      }
-
-      if (deleteConfirmed) {
-        const currentFrame = appState.frames[appState.currentFrameIndex];
-        currentFrame.lines = currentFrame.lines.filter(l => l.id !== clickedLine.id);
-        appState.selectedLineId = null;
-        draw();
-        saveState();
-        setInstruction('Line deleted');
-      } else {
-        appState.selectedLineId = null;
-        draw();
+        this.setInstruction('Only offensive players can have the ball');
       }
       return;
     }
 
-    const playerAtStart = getPlayerAtCoord(x, y);
-    if (playerAtStart) {
-      appState.isDragging = true;
-      appState.draggingPlayer = playerAtStart;
-      appState.dragStartX = x;
-      appState.dragStartY = y;
-      appState.dragOffsetX = x - playerAtStart.x;
-      appState.dragOffsetY = y - playerAtStart.y;
+    if (['shoot', 'pass'].includes(tool) && !player.hasBall) {
+      this.setInstruction("That player doesn't have the ball!");
+      return;
+    }
 
-      // [FIX] Set selected player, hide wheel *during* drag
-      appState.selectedPlayerId = playerAtStart.id;
-      hideActionWheelImmediate();
+    currentFrame.lines = currentFrame.lines.filter(l => l.startPlayerId !== player.id);
+    this.state.isDrawingLine = true;
+    this.state.activeLineTool = tool;
+    this.state.previewLine = {
+      id: this.lineIdCounter++,
+      type: tool,
+      startPlayerId: player.id,
+      points: [{ x: player.x, y: player.y }, { x: player.x, y: player.y }]
+    };
+    this.setInstruction(`Drawing ${tool}. Single‑click to add waypoints, double‑click to finish.`);
+    this.dom.canvas.classList.add('drawing-line');
+    this.draw();
+  }
 
-      // Attach document-level listeners to keep drag smooth beyond canvas bounds
-      document.addEventListener('mousemove', onDocumentMouseMove);
-      document.addEventListener('mouseup', onDocumentMouseUp);
+  handleFrameListClick(e) {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    this.hideActionWheel();
+    const clickedFrame = e.target.closest('.frame-thumbnail');
+    if (!clickedFrame) return;
+    const frameId = parseInt(clickedFrame.dataset.frameId, 10);
+    const frameIndex = this.state.frames.findIndex(f => f.id === frameId);
+    if (frameIndex !== -1) this.switchFrame(frameIndex);
+  }
 
-      e.preventDefault();
-    } else {
-      // [FIX] Clicked on empty canvas, deselect player and hide wheel
-      appState.selectedPlayerId = null;
-      hideActionWheel();
-      scheduleDraw(); // Redraw to remove old highlight (if any)
+  handleNotesInput() {
+    const currentFrame = this.state.frames[this.state.currentFrameIndex];
+    if (currentFrame) {
+      currentFrame.notes = this.dom.frameNotes.value;
+      clearTimeout(this.state.noteDebounceTimer);
+      this.state.noteDebounceTimer = setTimeout(() => {
+        this.saveState();
+      }, this.config.history.noteDebounceDelay);
     }
   }
 
-  function handleCanvasPointerMove(x, y) {
-    if (appState.isAnimating || appState.isExporting) return;
-
-    // Hover detection for lines (when not drawing/dragging)
-    if (!appState.isDragging && !appState.isDrawingLine) {
-      const hovered = getLineAtCoord(x, y);
-      const newHoverId = hovered ? hovered.id : null;
-      if (newHoverId !== appState.hoverLineId) {
-        appState.hoverLineId = newHoverId;
-        DOM.canvas.style.cursor = newHoverId ? 'pointer' : 'default';
-        scheduleDraw();
-      }
-    }
-
-    if (appState.isDragging && appState.draggingPlayer) {
-      appState.draggingPlayer.x = x - appState.dragOffsetX;
-      appState.draggingPlayer.y = y - appState.dragOffsetY;
-      scheduleDraw();
-    } else if (appState.isDrawingLine) {
-      appState.previewLine.points[appState.previewLine.points.length - 1] = { x, y };
-      scheduleDraw();
-    }
-  }
-
-  function handleCanvasPointerUp(x, y, viewportX, viewportY) {
-    if (appState.isAnimating || appState.isExporting) return;
-
-    if (appState.isDragging) {
-      const draggedPlayer = appState.draggingPlayer;
-      appState.isDragging = false;
-      appState.draggingPlayer = null;
-
-      const dist = Math.hypot(x - appState.dragStartX, y - appState.dragStartY);
-      if (dist >= CONFIG.interaction.clickTolerance) {
-        // Only save state if it was a drag, not a click
-        saveState();
-      }
-      
-      // [FIX] Always show the wheel on mouse up if we were dragging/clicking a player
-      showActionWheel(draggedPlayer, viewportX, viewportY);
-      scheduleDraw(); // Redraw
-
-      // Remove document-level listeners
-      document.removeEventListener('mousemove', onDocumentMouseMove);
-      document.removeEventListener('mouseup', onDocumentMouseUp);
-    }
-  }
-
-  // Document-level mouse handlers to ensure robust dragging
-  function onDocumentMouseMove(e) {
-    if (!appState.isDragging) return;
-    const { x, y } = getMousePos(e);
-    handleCanvasPointerMove(x, y);
-  }
-  function onDocumentMouseUp(e) {
-    if (!appState.isDragging) return;
-    const { x, y, viewportX, viewportY } = getMousePos(e);
-    handleCanvasPointerUp(x, y, viewportX, viewportY);
-  }
-
-  // Mouse adapters
-  function handleCanvasMouseDown(e) {
-    const { x, y, viewportX, viewportY } = getMousePos(e);
-    handleCanvasPointerDown(x, y, viewportX, viewportY, e);
-  }
-  function handleCanvasMouseMove(e) {
-    const { x, y } = getMousePos(e);
-    handleCanvasPointerMove(x, y);
-  }
-  function handleCanvasMouseUp(e) {
-    const { x, y, viewportX, viewportY } = getMousePos(e);
-    handleCanvasPointerUp(x, y, viewportX, viewportY);
-  }
-
-  // Touch adapters
-  function handleCanvasTouchStart(e) {
-    e.preventDefault();
-    const { x, y, viewportX, viewportY } = getTouchPos(e);
-    handleCanvasPointerDown(x, y, viewportX, viewportY, e);
-  }
-  function handleCanvasTouchMove(e) {
-    e.preventDefault();
-    const { x, y } = getTouchPos(e);
-    handleCanvasPointerMove(x, y);
-  }
-  function handleCanvasTouchEnd(e) {
-    e.preventDefault();
-    const touch = e.changedTouches[0];
-    const rect = DOM.canvas.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
-    handleCanvasPointerUp(x, y, touch.clientX, touch.clientY);
-  }
-
-  function handleDrop(e) {
-    e.preventDefault();
-    DOM.canvas.classList.remove('drag-over');
-    const playerLabel = e.dataTransfer.getData('text/plain');
-    if (playerLabel) {
-      const { x, y, viewportX, viewportY } = getMousePos(e);
-      // [FIX] This function was missing, now it is defined above handleNewPlay
-      const newPlayer = createPlayerAt(x, y, playerLabel);
-      if (newPlayer) {
-        draw();
-        saveState();
-        // [FIX] Pass viewportX/Y for centering
-        showActionWheel(newPlayer, viewportX, viewportY);
-      }
-    }
-  }
-
-  // ============================================================================
-  // EVENT LISTENER REGISTRATION
-  // ============================================================================
-  DOM.newPlayBtn.addEventListener('click', () => handleNewPlay(true));
-  DOM.clearFrameBtn.addEventListener('click', handleClearFrame);
-  DOM.saveBtn.addEventListener('click', handleSave);
-  DOM.loadBtn.addEventListener('click', () => DOM.loadFileInput.click());
-  DOM.exportPdfBtn.addEventListener('click', handleExportPDF);
-  DOM.exportVideoBtn.addEventListener('click', handleExportVideo);
-  DOM.addFrameBtn.addEventListener('click', handleAddFrame);
-  DOM.deleteFrameBtn.addEventListener('click', handleDeleteFrame);
-  DOM.undoBtn.addEventListener('click', undo);
-  DOM.redoBtn.addEventListener('click', redo);
-
-  document.addEventListener('keydown', (e) => {
+  handleKeyDown(e) {
     if (e.ctrlKey || e.metaKey) {
-      if (e.key === 'z') { e.preventDefault(); undo(); }
-      else if (e.key === 'y') { e.preventDefault(); redo(); }
+      if (e.key === 'z') { e.preventDefault(); this.undo(); }
+      else if (e.key === 'y') { e.preventDefault(); this.redo(); }
     }
 
-    if (appState.selectedPlayerId) {
+    if (this.state.selectedPlayerId) {
       const key = e.key.toLowerCase();
       const toolMap = {
         'm': 'cut',
@@ -1499,91 +1100,57 @@ if (appState.isDrawingLine) {
       };
       if (toolMap[key]) {
         e.preventDefault();
-        handleWheelAction(toolMap[key]);
+        this.handleWheelAction(toolMap[key]);
       }
       if (key === 'escape') {
         e.preventDefault();
-        hideActionWheel();
+        this.hideActionWheel();
       }
     }
 
-    if (appState.isDrawingLine && e.key === 'Escape') {
+    if (this.state.isDrawingLine && e.key === 'Escape') {
       e.preventDefault();
-      clearTimeout(appState.clickTimerId);
-      appState.clickTimerId = null;
-      appState.isDrawingLine = false;
-      appState.previewLine = null;
-      DOM.canvas.classList.remove('drawing-line');
-      draw();
-      setInstruction('Line cancelled');
+      clearTimeout(this.state.clickTimerId);
+      this.state.clickTimerId = null;
+      this.state.isDrawingLine = false;
+      this.state.previewLine = null;
+      this.dom.canvas.classList.remove('drawing-line');
+      this.draw();
+      this.setInstruction('Line cancelled');
     }
-  });
+  }
 
-  DOM.courtToggle.addEventListener('change', (e) => {
-    appState.courtType = e.target.value;
-    draw();
-  });
-
-  DOM.frameList.addEventListener('click', (e) => {
-    if (appState.isAnimating || appState.isExporting) return;
-    hideActionWheel();
-    const clickedFrame = e.target.closest('.frame-thumbnail');
-    if (!clickedFrame) return;
-    const frameId = parseInt(clickedFrame.dataset.frameId, 10);
-    const frameIndex = appState.frames.findIndex(f => f.id === frameId);
-    if (frameIndex !== -1) switchFrame(frameIndex);
-  });
-
-  DOM.frameNotes.addEventListener('input', () => {
-    const currentFrame = appState.frames[appState.currentFrameIndex];
-    if (currentFrame) {
-      currentFrame.notes = DOM.frameNotes.value;
-      clearTimeout(appState.noteDebounceTimer);
-      appState.noteDebounceTimer = setTimeout(() => {
-        saveState();
-      }, CONFIG.history.noteDebounceDelay);
-    }
-  });
-
-  DOM.loadFileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      handleLoad(file);
-    }
-    e.target.value = null;
-  });
-
-  // [FIX] Removed stray 's' character that was causing a SyntaxError
-  DOM.animateBtn.addEventListener('click', () => {
-    if (appState.isExporting) return;
-    if (appState.isAnimating) {
-      stopAnimation();
+  handleAnimate() {
+    if (this.state.isExporting) return;
+    if (this.state.isAnimating) {
+      this.stopAnimation();
     } else {
-      if (appState.frames.length < 2) {
-        showAlert('You need at least two frames to animate.');
+      if (this.state.frames.length < 2) {
+        this.showAlert('You need at least two frames to animate.');
         return;
       }
-      appState.isAnimating = true;
-      appState.currentFramePlaying = 0;
-      appState.animationStartTime = 0;
-      DOM.animateBtn.textContent = '⏹️ Stop';
-      DOM.animateBtn.classList.remove('btn-primary');
-      DOM.animateBtn.classList.add('btn-danger');
-      renderFrameList();
+      this.state.isAnimating = true;
+      this.state.currentFramePlaying = 0;
+      this.state.animationStartTime = 0;
+      this.dom.animateBtn.textContent = '⏹️ Stop';
+      this.dom.animateBtn.classList.remove('btn-primary');
+      this.dom.animateBtn.classList.add('btn-danger');
+      this.renderFrameList();
 
-      function animatePlay(timestamp) {
-        if (appState.animationStartTime === 0) appState.animationStartTime = timestamp;
-        const elapsed = timestamp - appState.animationStartTime;
-        const progress = Math.min(1.0, elapsed / CONFIG.animation.speed);
-        const frameA = appState.frames[appState.currentFramePlaying];
-        if (!frameA) { stopAnimation(); return; }
+      const animatePlay = (timestamp) => {
+        if (!this.state.isAnimating) return; // Stopped externally
+        if (this.state.animationStartTime === 0) this.state.animationStartTime = timestamp;
+        const elapsed = timestamp - this.state.animationStartTime;
+        const progress = Math.min(1.0, elapsed / this.config.animation.speed);
+        const frameA = this.state.frames[this.state.currentFramePlaying];
+        if (!frameA) { this.stopAnimation(); return; }
 
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
-        const courtImg = appState.courtType === 'half' ? halfCourtImg : fullCourtImg;
-        if (courtImg && courtImg.complete) ctx.drawImage(courtImg, 0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+        this.ctx.fillStyle = 'white';
+        this.ctx.fillRect(0, 0, this.config.canvas.width, this.config.canvas.height);
+        const courtImg = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
+        if (courtImg && courtImg.complete) this.ctx.drawImage(courtImg, 0, 0, this.config.canvas.width, this.config.canvas.height);
 
-        drawLines(frameA.lines);
+        this.drawLines(frameA.lines);
 
         const moveLines = new Map();
         const passLines = new Map();
@@ -1596,140 +1163,530 @@ if (appState.isDrawingLine) {
         });
 
         frameA.players.forEach(player => {
-          let drawX = player.x;
-          let drawY = player.y;
-          let hasBall = player.hasBall;
-
+          let drawX = player.x, drawY = player.y, hasBall = player.hasBall;
           const moveLine = moveLines.get(player.id);
           const passLine = passLines.get(player.id);
           const shootLine = shootLines.get(player.id);
 
           if (moveLine) {
-            const pathLength = getPathLength(moveLine.points);
+            const pathLength = this.getPathLength(moveLine.points);
             const distanceToTravel = pathLength * progress;
-            const newPos = getPointAlongPath(moveLine.points, distanceToTravel);
+            const newPos = this.getPointAlongPath(moveLine.points, distanceToTravel);
             drawX = newPos.x;
             drawY = newPos.y;
           }
           if (passLine && progress < 1.0) {
             hasBall = false;
-            const passPathLength = getPathLength(passLine.points);
-            const passDist = passPathLength * progress;
-            const ballPos = getPointAlongPath(passLine.points, passDist);
-            drawAnimatedBall(ballPos.x, ballPos.y);
+            const passPathLength = this.getPathLength(passLine.points);
+            const ballPos = this.getPointAlongPath(passLine.points, passPathLength * progress);
+            this.drawAnimatedBall(ballPos.x, ballPos.y);
           }
           if (shootLine && progress < 1.0) {
             hasBall = false;
-            const shootPathLength = getPathLength(shootLine.points);
-            const shootDist = shootPathLength * progress;
-            const ballPos = getPointAlongPath(shootLine.points, shootDist);
-            drawAnimatedBall(ballPos.x, ballPos.y);
+            const shootPathLength = this.getPathLength(shootLine.points);
+            const ballPos = this.getPointAlongPath(shootLine.points, shootPathLength * progress);
+            this.drawAnimatedBall(ballPos.x, ballPos.y);
           }
-          drawPlayerAt(player, drawX, drawY, hasBall);
+          this.drawPlayerAt(player, drawX, drawY, hasBall);
         });
 
         if (progress < 1.0) {
-          appState.animationFrameId = requestAnimationFrame(animatePlay);
+          this.state.animationFrameId = requestAnimationFrame(animatePlay);
         } else {
-          appState.currentFramePlaying++;
-          appState.animationStartTime = 0;
-          if (appState.currentFramePlaying >= appState.frames.length) {
-            stopAnimation();
-            switchFrame(appState.frames.length - 1);
+          this.state.currentFramePlaying++;
+          this.state.animationStartTime = 0;
+          if (this.state.currentFramePlaying >= this.state.frames.length) {
+            this.stopAnimation();
+            this.switchFrame(this.state.frames.length - 1);
           } else {
-            renderFrameList();
-            appState.animationFrameId = requestAnimationFrame(animatePlay);
+            this.renderFrameList();
+            this.state.animationFrameId = requestAnimationFrame(animatePlay);
           }
         }
       }
-
-      appState.animationFrameId = requestAnimationFrame(animatePlay);
-    }
-  });
-
-  function stopAnimation() {
-    if (appState.isAnimating) {
-      if (appState.animationFrameId) {
-        cancelAnimationFrame(appState.animationFrameId);
-        appState.animationFrameId = null;
-      }
-      appState.isAnimating = false;
-      appState.animationStartTime = 0;
-      DOM.animateBtn.textContent = '▶️ Animate';
-      DOM.animateBtn.classList.remove('btn-danger');
-      DOM.animateBtn.classList.add('btn-primary');
-      renderFrameList();
+      this.state.animationFrameId = requestAnimationFrame(animatePlay);
     }
   }
 
-  DOM.canvas.addEventListener('contextmenu', e => e.preventDefault());
-  DOM.canvas.addEventListener('mousedown', handleCanvasMouseDown);
-  DOM.canvas.addEventListener('mousemove', handleCanvasMouseMove);
-  DOM.canvas.addEventListener('mouseup', handleCanvasMouseUp);
+  // --- Pointer Handlers (Mouse & Touch) ---
 
-  DOM.canvas.addEventListener('touchstart', handleCanvasTouchStart, { passive: false });
-  DOM.canvas.addEventListener('touchmove', handleCanvasTouchMove, { passive: false });
-  DOM.canvas.addEventListener('touchend', handleCanvasTouchEnd, { passive: false });
+  handleCanvasPointerDown(x, y, viewportX, viewportY, e) {
+    if (this.state.isAnimating || this.state.isExporting) return;
 
-  DOM.canvas.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    DOM.canvas.classList.add('drag-over');
-    e.dataTransfer.dropEffect = 'copy';
-  });
-  DOM.canvas.addEventListener('dragleave', () => DOM.canvas.classList.remove('drag-over'));
-  DOM.canvas.addEventListener('drop', handleDrop);
-
-  // IMPORTANT: do NOT end drags on mouseout (prevents premature drag stop)
-  DOM.canvas.addEventListener('mouseout', () => {
-    DOM.canvas.classList.remove('drag-over');
-  });
-
-  // Wheel actions
-  DOM.actionWheel.addEventListener('click', (e) => {
-    const button = e.target.closest('.wheel-button');
-    if (button) {
-      handleWheelAction(button.dataset.tool);
-    }
-  });
-
-  // Click outside both wheel and canvas -> hide wheel
-  document.addEventListener('click', (e) => {
-    if (!DOM.actionWheel.contains(e.target) &&
-        !DOM.canvas.contains(e.target) &&
-        DOM.actionWheel.classList.contains('visible')) {
-      hideActionWheel();
-    }
-  });
-
-  // Toolbox DnD feedback
-  DOM.playerToolIcons.forEach(icon => {
-    icon.addEventListener('dragstart', (e) => {
-      if (appState.isAnimating || appState.isExporting) {
+    if (this.state.isDrawingLine) {
+      const now = Date.now();
+      if (now - this.state.lastClickTime < this.config.interaction.doubleClickTime) {
         e.preventDefault();
-        return;
+        this.finalizePreviewLine(x, y);
+      } else {
+        this.addWaypoint(x, y);
       }
-      e.dataTransfer.setData('text/plain', icon.dataset.player);
-      e.dataTransfer.effectAllowed = 'copy';
-      icon.classList.add('dragging');
-      setInstruction(`Drop player ${icon.dataset.player} onto the court`);
-    });
-    icon.addEventListener('dragend', () => {
-      icon.classList.remove('dragging');
-      setInstruction('Drag a player onto the court');
-    });
-  });
+      this.state.lastClickTime = now;
+      return;
+    }
 
-  // ============================================================================
-  // INITIALIZATION
-  // ============================================================================
-  initializeToolboxIcons();
-  initializeActionWheelIcons();
-  renderFrameList();
-  draw();
-  setInstruction('Drag a player onto the court to begin');
-  updateHistoryButtons();
-  console.log('✅ Basketball Playmaker Pro (Master 3.2.4) initialized');
+    const clickedLine = this.getLineAtCoord(x, y);
+    if (clickedLine) {
+      this.state.selectedLineId = clickedLine.id;
+      this.draw();
+      if (confirm('Delete this action line?')) {
+        const currentFrame = this.state.frames[this.state.currentFrameIndex];
+        currentFrame.lines = currentFrame.lines.filter(l => l.id !== clickedLine.id);
+        this.state.selectedLineId = null;
+        this.draw();
+        this.saveState();
+        this.setInstruction('Line deleted');
+      } else {
+        this.state.selectedLineId = null;
+        this.draw();
+      }
+      return;
+    }
+
+    const playerAtStart = this.getPlayerAtCoord(x, y);
+    if (playerAtStart) {
+      this.state.isDragging = true;
+      this.state.draggingPlayer = playerAtStart;
+      this.state.dragStartX = x;
+      this.state.dragStartY = y;
+      this.state.dragOffsetX = x - playerAtStart.x;
+      this.state.dragOffsetY = y - playerAtStart.y;
+      this.state.selectedPlayerId = playerAtStart.id;
+      this.hideActionWheelImmediate();
+
+      document.addEventListener('mousemove', this.onDocumentMouseMove);
+      document.addEventListener('mouseup', this.onDocumentMouseUp);
+      e.preventDefault();
+    } else {
+      this.state.selectedPlayerId = null;
+      this.hideActionWheel();
+      this.scheduleDraw();
+    }
+  }
+
+  handleCanvasPointerMove(x, y) {
+    if (this.state.isAnimating || this.state.isExporting) return;
+
+    if (!this.state.isDragging && !this.state.isDrawingLine) {
+      const hovered = this.getLineAtCoord(x, y);
+      const newHoverId = hovered ? hovered.id : null;
+      if (newHoverId !== this.state.hoverLineId) {
+        this.state.hoverLineId = newHoverId;
+        this.dom.canvas.style.cursor = newHoverId ? 'pointer' : 'default';
+        this.scheduleDraw();
+      }
+    }
+
+    if (this.state.isDragging && this.state.draggingPlayer) {
+      this.state.draggingPlayer.x = x - this.state.dragOffsetX;
+      this.state.draggingPlayer.y = y - this.state.dragOffsetY;
+      this.scheduleDraw();
+    } else if (this.state.isDrawingLine) {
+      this.state.previewLine.points[this.state.previewLine.points.length - 1] = { x, y };
+      this.scheduleDraw();
+    }
+  }
+
+  handleCanvasPointerUp(x, y, viewportX, viewportY) {
+    if (this.state.isAnimating || this.state.isExporting) return;
+
+    if (this.state.isDragging) {
+      const draggedPlayer = this.state.draggingPlayer;
+      this.state.isDragging = false;
+      this.state.draggingPlayer = null;
+
+      const dist = Math.hypot(x - this.state.dragStartX, y - this.state.dragStartY);
+      if (dist >= this.config.interaction.clickTolerance) {
+        this.saveState();
+      }
+
+      this.showActionWheel(draggedPlayer, viewportX, viewportY);
+      this.scheduleDraw();
+
+      document.removeEventListener('mousemove', this.onDocumentMouseMove);
+      document.removeEventListener('mouseup', this.onDocumentMouseUp);
+    }
+  }
+
+  // --- Mouse Adapters ---
+  handleCanvasMouseDown(e) {
+    const { x, y, viewportX, viewportY } = this.getMousePos(e);
+    this.handleCanvasPointerDown(x, y, viewportX, viewportY, e);
+  }
+  handleCanvasMouseMove(e) {
+    const { x, y } = this.getMousePos(e);
+    this.handleCanvasPointerMove(x, y);
+  }
+  handleCanvasMouseUp(e) {
+    const { x, y, viewportX, viewportY } = this.getMousePos(e);
+    this.handleCanvasPointerUp(x, y, viewportX, viewportY);
+  }
+
+  // --- Touch Adapters ---
+  handleCanvasTouchStart(e) {
+    e.preventDefault();
+    const { x, y, viewportX, viewportY } = this.getTouchPos(e);
+    this.handleCanvasPointerDown(x, y, viewportX, viewportY, e);
+  }
+  handleCanvasTouchMove(e) {
+    e.preventDefault();
+    const { x, y } = this.getTouchPos(e);
+    this.handleCanvasPointerMove(x, y);
+  }
+  handleCanvasTouchEnd(e) {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    const rect = this.dom.canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    this.handleCanvasPointerUp(x, y, touch.clientX, touch.clientY);
+  }
+
+  // --- Robust Drag Handlers ---
+  onDocumentMouseMove(e) {
+    if (!this.state.isDragging) return;
+    const { x, y } = this.getMousePos(e);
+    this.handleCanvasPointerMove(x, y);
+  }
+  onDocumentMouseUp(e) {
+    if (!this.state.isDragging) return;
+    const { x, y, viewportX, viewportY } = this.getMousePos(e);
+    this.handleCanvasPointerUp(x, y, viewportX, viewportY);
+  }
+
+  // --- Drag and Drop Handlers ---
+  handlePlayerDragStart(e) {
+    if (this.state.isAnimating || this.state.isExporting) {
+      e.preventDefault();
+      return;
+    }
+    const icon = e.target.closest('.player-tool-icon');
+    e.dataTransfer.setData('text/plain', icon.dataset.player);
+    e.dataTransfer.effectAllowed = 'copy';
+    icon.classList.add('dragging');
+    this.setInstruction(`Drop player ${icon.dataset.player} onto the court`);
+  }
+  handlePlayerDragEnd(e) {
+    const icon = e.target.closest('.player-tool-icon');
+    icon.classList.remove('dragging');
+    this.setInstruction('Drag a player onto the court');
+  }
+  handleDragOver(e) {
+    e.preventDefault();
+    this.dom.canvas.classList.add('drag-over');
+    e.dataTransfer.dropEffect = 'copy';
+  }
+  handleDragLeave() {
+    this.dom.canvas.classList.remove('drag-over');
+  }
+  handleDrop(e) {
+    e.preventDefault();
+    this.dom.canvas.classList.remove('drag-over');
+    const playerLabel = e.dataTransfer.getData('text/plain');
+    if (playerLabel) {
+      const { x, y, viewportX, viewportY } = this.getMousePos(e);
+      const newPlayer = this.createPlayerAt(x, y, playerLabel);
+      if (newPlayer) {
+        this.draw();
+        this.saveState();
+        this.showActionWheel(newPlayer, viewportX, viewportY);
+      }
+    }
+  }
+
+  // ==========================================================================
+  // FILE OPERATIONS (Save, Load, Export)
+  // ==========================================================================
+
+  handleSave() {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    const playName = this.dom.playNameInput.value || 'Untitled Play';
+    const filename = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+    const saveData = {
+      playName,
+      courtType: this.state.courtType,
+      frames: this.state.frames,
+      nextFrameId: this.state.nextFrameId,
+      nextPlayerId: this.state.nextPlayerId
+    };
+    try {
+      const jsonString = JSON.stringify(saveData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Save error:', error);
+      this.showAlert('Failed to save play.');
+    }
+  }
+
+  handleLoadFile(e) {
+    const file = e.target.files[0];
+    if (file) {
+      this.handleLoad(file);
+    }
+    e.target.value = null; // Reset input
+  }
+
+  handleLoad(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const loadedData = JSON.parse(event.target.result);
+        if (!loadedData.frames || !Array.isArray(loadedData.frames)) {
+          throw new Error('Invalid play file format');
+        }
+        this.handleNewPlay(false); // Clear existing state
+        this.state.courtType = loadedData.courtType || 'half';
+        this.state.frames = loadedData.frames;
+        this.state.nextFrameId = loadedData.nextFrameId || (this.state.frames.length + 1);
+
+        if (loadedData.nextPlayerId) {
+          this.state.nextPlayerId = loadedData.nextPlayerId;
+        } else {
+          const maxId = this.state.frames.reduce((max, frame) => {
+            const frameMax = frame.players.reduce((pMax, p) => Math.max(pMax, p.id), 0);
+            return Math.max(max, frameMax);
+          }, 0);
+          this.state.nextPlayerId = maxId + 1;
+        }
+
+        // Ensure all lines have unique IDs (for backward compatibility)
+        this.state.frames.forEach(frame => {
+          frame.lines.forEach(line => { if (!line.id) line.id = this.lineIdCounter++; });
+        });
+
+        this.state.history = [this.copyFrames(this.state.frames)];
+        this.state.historyIndex = 0;
+        this.updateHistoryButtons();
+        this.state.currentFrameIndex = 0;
+
+        this.dom.playNameInput.value = loadedData.playName || '';
+        this.dom.courtToggle.value = this.state.courtType;
+        this.switchFrame(0);
+      } catch (error) {
+        console.error('Load error:', error);
+        this.showAlert(`Could not load play file: ${error.message}`);
+      }
+    };
+    reader.onerror = () => {
+      console.error('File read error:', reader.error);
+      this.showAlert('Error reading file.');
+    };
+    reader.readText(file);
+  }
+
+  handleExportPDF() {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    this.state.isExporting = true;
+    this.dom.exportPdfBtn.disabled = true;
+    this.showLoading('Generating PDF...');
+
+    setTimeout(() => {
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('portrait', 'mm', 'a4');
+        const originalFrameIndex = this.state.currentFrameIndex;
+        const playName = this.dom.playNameInput.value || 'Untitled Play';
+
+        const margin = 10;
+        const pageW = 210;
+        const pageH = 297;
+        const contentW = pageW - margin * 2;
+        const imgColW = 80;
+        const gutter = 10;
+        const notesColW = contentW - imgColW - gutter;
+        const imgColH = (imgColW / 4) * 3;
+        const frameRowH = (pageH - margin * 2) / 3;
+
+        for (let i = 0; i < this.state.frames.length; i++) {
+          const frameIndexInPage = i % 3;
+          if (i > 0 && frameIndexInPage === 0) doc.addPage();
+
+          this.switchFrame(i); // Temporarily switch frame to draw
+          const imgData = this.dom.canvas.toDataURL('image/png');
+          const yPos = margin + frameIndexInPage * frameRowH + 5;
+          const imgX = margin;
+
+          doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH);
+
+          const notesX = margin + imgColW + gutter;
+          doc.setFontSize(14);
+          doc.setFont(undefined, 'bold');
+          doc.text(`Frame ${i + 1}`, notesX, yPos + 5);
+
+          doc.setFontSize(10);
+          doc.setFont(undefined, 'normal');
+          const notesText = this.state.frames[i].notes || 'No notes';
+          const notesLines = doc.splitTextToSize(notesText, notesColW);
+          doc.text(notesLines, notesX, yPos + 12);
+        }
+
+        const filename = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+        doc.save(filename);
+        this.switchFrame(originalFrameIndex); // Restore original frame
+      } catch (error) {
+        console.error('PDF export error:', error);
+        this.showAlert(`Could not generate PDF: ${error.message}`);
+      } finally {
+        this.state.isExporting = false;
+        this.dom.exportPdfBtn.disabled = false;
+        this.hideLoading();
+      }
+    }, 100); // Timeout to allow loading UI to render
+  }
+
+  handleExportVideo() {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    if (this.state.frames.length < 2) {
+      this.showAlert('You need at least two frames to create a video.');
+      return;
+    }
+    if (!this.dom.canvas.captureStream || !window.MediaRecorder) {
+      this.showAlert('Video export not supported in this browser. Use Chrome, Firefox, or Edge.');
+      return;
+    }
+    this.state.isExporting = true;
+    this.dom.exportVideoBtn.disabled = true;
+    this.showLoading('Recording Video...');
+
+    try {
+      const stream = this.dom.canvas.captureStream(this.config.video.fps);
+      const recorder = new MediaRecorder(stream, { mimeType: this.config.video.mimeType });
+      const recordedChunks = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: this.config.video.mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const playName = this.dom.playNameInput.value || 'Untitled Play';
+        a.href = url;
+        a.download = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.state.isExporting = false;
+        this.dom.exportVideoBtn.disabled = false;
+        this.hideLoading();
+        this.switchFrame(0);
+      };
+
+      recorder.onerror = (e) => {
+        console.error('Recording error:', e);
+        this.showAlert('Video recording failed.');
+        this.state.isExporting = false;
+        this.dom.exportVideoBtn.disabled = false;
+        this.hideLoading();
+      };
+
+      recorder.start();
+
+      let frameToPlay = 0;
+      let frameStartTime = 0;
+      let holdingFinalFrame = false;
+      let finalFrameHoldStart = 0;
+
+      const recordAnimationLoop = (timestamp) => {
+        if (!this.state.isExporting) { // Check if cancelled
+          recorder.stop();
+          return;
+        }
+        if (frameStartTime === 0) frameStartTime = timestamp;
+
+        if (holdingFinalFrame) {
+          if (timestamp - finalFrameHoldStart >= this.config.animation.finalFrameHold) {
+            recorder.stop();
+          } else {
+            requestAnimationFrame(recordAnimationLoop);
+          }
+          return;
+        }
+
+        const elapsed = timestamp - frameStartTime;
+        const progress = Math.min(1.0, elapsed / this.config.animation.speed);
+        const currentRecordFrame = this.state.frames[frameToPlay];
+        if (!currentRecordFrame) { recorder.stop(); return; }
+
+        // --- Identical Render logic from animatePlay ---
+        this.ctx.fillStyle = 'white';
+        this.ctx.fillRect(0, 0, this.config.canvas.width, this.config.canvas.height);
+        const courtImg = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
+        if (courtImg && courtImg.complete) this.ctx.drawImage(courtImg, 0, 0, this.config.canvas.width, this.config.canvas.height);
+        this.drawLines(currentRecordFrame.lines);
+        const moveLines = new Map();
+        const passLines = new Map();
+        const shootLines = new Map();
+        currentRecordFrame.lines.forEach(line => {
+          if (!line.startPlayerId) return;
+          if (['cut', 'dribble', 'move', 'screen'].includes(line.type)) moveLines.set(line.startPlayerId, line);
+          else if (line.type === 'pass') passLines.set(line.startPlayerId, line);
+          else if (line.type === 'shoot') shootLines.set(line.startPlayerId, line);
+        });
+        currentRecordFrame.players.forEach(player => {
+          let drawX = player.x, drawY = player.y, hasBall = player.hasBall;
+          const moveLine = moveLines.get(player.id);
+          const passLine = passLines.get(player.id);
+          const shootLine = shootLines.get(player.id);
+          if (moveLine) {
+            const pathLength = this.getPathLength(moveLine.points);
+            const newPos = this.getPointAlongPath(moveLine.points, pathLength * progress);
+            drawX = newPos.x;
+            drawY = newPos.y;
+          }
+          if (passLine && progress < 1.0) {
+            hasBall = false;
+            const passPathLength = this.getPathLength(passLine.points);
+            const ballPos = this.getPointAlongPath(passLine.points, passPathLength * progress);
+            this.drawAnimatedBall(ballPos.x, ballPos.y);
+          }
+          if (shootLine && progress < 1.0) {
+            hasBall = false;
+            const shootPathLength = this.getPathLength(shootLine.points);
+            const ballPos = this.getPointAlongPath(shootLine.points, shootPathLength * progress);
+            this.drawAnimatedBall(ballPos.x, ballPos.y);
+          }
+          this.drawPlayerAt(player, drawX, drawY, hasBall);
+        });
+        // --- End Render Logic ---
+
+        if (progress < 1.0) {
+          requestAnimationFrame(recordAnimationLoop);
+        } else {
+          frameToPlay++;
+          frameStartTime = 0;
+          if (frameToPlay >= this.state.frames.length) {
+            holdingFinalFrame = true;
+            finalFrameHoldStart = timestamp;
+            requestAnimationFrame(recordAnimationLoop);
+          } else {
+            requestAnimationFrame(recordAnimationLoop);
+          }
+        }
+      }
+      requestAnimationFrame(recordAnimationLoop);
+
+    } catch (error) {
+      console.error('Video export error:', error);
+      this.showAlert(`Could not record video: ${error.message}`);
+      this.state.isExporting = false;
+      this.dom.exportVideoBtn.disabled = false;
+      this.hideLoading();
+    }
+  }
+}
+
+// ============================================================================
+// APPLICATION ENTRY POINT
+// ============================================================================
+document.addEventListener('DOMContentLoaded', () => {
+  new PlaymakerApp();
 });
-
-
-

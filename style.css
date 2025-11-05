@@ -1,4 +1,3 @@
-
 /* ============================================
    BASKETBALL PLAYMAKER PRO - RADIAL MENU + UX
    ============================================ */
@@ -603,3 +602,21 @@ body {
   .spinner { animation: none; border-top-color: transparent; }
 }
 
+/* CodeGuardian Note:
+  Added rules to replace TailwindCDN for donation links.
+*/
+#donationLinks {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem; /* Tailwind 'gap-2' */
+  font-size: 0.875rem; /* Tailwind 'text-sm' */
+  line-height: 1.25rem;
+  color: #9ca3af; /* Tailwind 'text-gray-400' */
+  margin-top: 1rem; /* Tailwind 'mt-4' */
+  padding-left: 0.5rem; /* Tailwind 'px-2' */
+  padding-right: 0.5rem; /* Tailwind 'px-2' */
+}
+#donationLinks img {
+  height: 1.5rem; /* Tailwind 'h-6' */
+  width: auto;
+}
