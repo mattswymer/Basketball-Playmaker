@@ -5,7 +5,7 @@ class PlaymakerApp {
     // ========================================================================
     // CONFIGURATION & CONSTANTS
     // ========================================================================
-    this.config = {
+this.config = {
       canvas: { width: 800, height: 600 },
       player: {
         radius: 15,
@@ -31,6 +31,15 @@ class PlaymakerApp {
         shootLineOffset: 4,
         passLineDash: [5, 10]
       },
+      // --- NEWLY ADDED ---
+      geometry: {
+        lineEndPullback: {
+          screen: 4,
+          shoot: 4,
+          defaultArrow: 14 // (this.config.line.arrowLength + 2)
+        }
+      },
+      // ---------------------
       animation: { speed: 1500, fps: 30, finalFrameHold: 2000 },
       interaction: {
         clickTolerance: 10,
@@ -1732,6 +1741,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
