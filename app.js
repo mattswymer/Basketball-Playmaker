@@ -5,7 +5,8 @@ class PlaymakerApp {
     // ========================================================================
     // CONFIGURATION & CONSTANTS
     // ========================================================================
-this.config = {
+
+  this.config = {
       canvas: { width: 800, height: 600 },
       player: {
         radius: 15,
@@ -98,7 +99,17 @@ this.config = {
     // ========================================================================
     this.init();
   }
-
+async safeOperation(operation, errorMessage) {
+    try {
+      // Await the operation (which is an async function)
+      return await operation();
+    } catch (error) {
+      // Centralized error logging and user notification
+      console.error(errorMessage, error);
+      this.showAlert(`${errorMessage}: ${error.message}`);
+      return null; // Signal failure to the caller
+    }
+  }
   /**
    * Primary initialization sequence.
    * Loads images, binds events, and performs the first render.
@@ -1497,27 +1508,23 @@ handleLoadFile = (e) => {
 async handleLoad(file) {
     if (!file) return;
 
-    try {
+    await this.safeOperation(async () => {
       const text = await file.text();
       const loadedData = JSON.parse(text);
 
-      // --- ENHANCEMENT: Call validation function ---
       this.validatePlayData(loadedData);
-      // --- End Enhancement ---
 
       this.handleNewPlay(false);
       this.state.courtType = loadedData.courtType || 'half';
       this.state.frames = loadedData.frames;
       this.state.nextFrameId = loadedData.nextFrameId || (this.state.frames.length + 1);
 
-      // Calculate nextPlayerId from existing data
       const maxId = this.state.frames.reduce((max, frame) => {
         const frameMax = frame.players.reduce((pMax, p) => Math.max(pMax, p.id), 0);
         return Math.max(max, frameMax);
       }, 0);
       this.state.nextPlayerId = loadedData.nextPlayerId || maxId + 1;
 
-      // Ensure all lines have IDs
       this.state.frames.forEach(frame => {
         frame.lines.forEach(line => {
           if (!line.id) line.id = this.lineIdCounter++;
@@ -1531,11 +1538,7 @@ async handleLoad(file) {
       this.dom.playNameInput.value = loadedData.playName || '';
       this.dom.courtToggle.value = this.state.courtType;
       this.switchFrame(0);
-
-    } catch (error) {
-      console.error('Load error:', error);
-      this.showAlert(`Could not load play file: ${error.message}`);
-    }
+    }, 'Could not load play file');
   }
 
   // --- NEW FUNCTION ---
@@ -1745,6 +1748,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
