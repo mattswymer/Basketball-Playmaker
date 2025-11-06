@@ -381,6 +381,7 @@ body {
   transform: scale(0.85);
   transition: opacity var(--transition-fast), transform var(--transition-fast);
   pointer-events: none;
+  will-change: opacity, transform;
 }
 #action-wheel.visible {
   opacity: 1;
@@ -420,6 +421,7 @@ body {
   left: 3.5rem;
   top: 3.5rem;
   pointer-events: auto;
+  will-change: transform;
 }
 .wheel-button:hover {
   transform: scale(1.15);
@@ -634,4 +636,5 @@ body {
 #donationLinks img {
   height: 1.5rem;
   width: auto;
+
 }
