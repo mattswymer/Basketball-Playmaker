@@ -539,17 +539,17 @@ saveState() {
   // ----------------------
 
 
-  drawLines(lines) {
+drawLines(lines) {
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return;
     const playerMap = new Map(currentFrame.players.map(p => [p.id, p]));
 
     lines.forEach(line => {
-      if (line.points.length < 2) return;
+      const { type, points, endPlayerId, id } = line;
+      if (points.length < 2) return;
 
-      // --- 1. Set line style based on state ---
-      const isSelected = line.id === this.state.selectedLineId;
-      const isHovered = line.id === this.state.hoverLineId && !isSelected;
+      const isSelected = id === this.state.selectedLineId;
+      const isHovered = id === this.state.hoverLineId && !isSelected;
 
       this.ctx.strokeStyle = isSelected ? this.config.line.selectedColor
                      : isHovered ? this.config.line.hoverColor
@@ -560,10 +560,73 @@ saveState() {
       this.ctx.lineCap = 'round';
       if (isSelected) { this.ctx.shadowColor = this.config.line.selectedColor; this.ctx.shadowBlur = 8; }
 
-      // --- 2. Delegate the actual drawing ---
-      // The registry finds the correct function ('renderCutLine', 'renderPassLine', etc.)
-      this.actionRegistry.render(line, this.ctx, playerMap);
-      
+      for (let i = 0; i < points.length - 1; i++) {
+        const start = points[i];
+        let end = { ...points[i + 1] };
+        const originalEnd = { ...end };
+
+        if (i === points.length - 2 && endPlayerId) {
+          const endPlayer = playerMap.get(endPlayerId);
+          if (endPlayer) {
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            // Use the new geometry config
+            let margin = this.config.geometry.lineEndPullback.defaultArrow;
+            if (type === 'screen') margin = this.config.geometry.lineEndPullback.screen;
+            if (type === 'shoot') margin = this.config.geometry.lineEndPullback.shoot;
+
+            const pullBack = this.config.player.radius + margin;
+            if (dist > pullBack) {
+              const ratio = (dist - pullBack) / dist;
+              end.x = start.x + dx * ratio;
+              end.y = start.y + dy * ratio;
+            }
+          }
+        }
+
+        if (type === 'shoot') {
+          const angle = Math.atan2(originalEnd.y - start.y, originalEnd.x - start.x);
+          const offset = this.config.line.shootLineOffset;
+          const end1 = { x: end.x + Math.sin(angle) * offset, y: end.y - Math.cos(angle) * offset };
+          const end2 = { x: end.x - Math.sin(angle) * offset, y: end.y + Math.cos(angle) * offset };
+
+          this.ctx.setLineDash([]);
+          this.ctx.beginPath();
+          this.ctx.moveTo(start.x + Math.sin(angle) * offset, start.y - Math.cos(angle) * offset);
+          this.ctx.lineTo(end1.x, end1.y);
+          this.ctx.stroke();
+
+          this.ctx.beginPath();
+          this.ctx.moveTo(start.x - Math.sin(angle) * offset, start.y + Math.cos(angle) * offset);
+          this.ctx.lineTo(end2.x, end2.y);
+          this.ctx.stroke();
+
+          this.drawArrowhead(end1, angle);
+          this.drawArrowhead(end2, angle);
+          continue;
+        }
+
+        if (type === 'pass') this.ctx.setLineDash(this.config.line.passLineDash);
+        else this.ctx.setLineDash([]);
+
+        if (type === 'dribble') {
+          this.drawDribbleLine(start, end);
+        } else {
+          this.ctx.beginPath();
+          this.ctx.moveTo(start.x, start.y);
+          this.ctx.lineTo(end.x, end.y);
+          this.ctx.stroke();
+        }
+        this.ctx.setLineDash([]);
+
+        if (i === points.length - 2 && type !== 'dribble') {
+          const angle = Math.atan2(originalEnd.y - start.y, originalEnd.x - start.x);
+          if (type === 'screen') this.drawScreenEnd(end, angle);
+          else this.drawArrowhead(end, angle);
+        }
+      }
       this.ctx.shadowBlur = 0;
     });
     this.ctx.setLineDash([]);
@@ -1702,6 +1765,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
