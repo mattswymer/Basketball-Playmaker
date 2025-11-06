@@ -429,7 +429,10 @@ body {
   z-index: 10;
   box-shadow: var(--shadow-primary);
 }
-.wheel-button:active { transform: scale(1.05); }
+.wheel-button:active {
+  transform: scale(0.95);
+  background: var(--color-gray-light);
+}
 .wheel-button canvas {
   width: 2.5rem;
   height: 2.5rem;
@@ -549,6 +552,7 @@ body {
     flex-direction: column;
     align-items: stretch;
   }
+   
   .toolbar-section:first-child {
     flex-direction: column;
     align-items: center;
@@ -597,7 +601,11 @@ body {
   #wheel-shoot    { transform: translateX(-3.4rem); }
   #wheel-dribble  { transform: translate(-2.4rem, -2.4rem); }
 }
-
+@media (hover: none) {
+  .wheel-button {
+    font-size: 1.4rem; /* Larger touch targets */
+  }
+}
 /* ===== PRINT STYLES ===== */
 @media print {
   body { background: white; padding: 0; }
@@ -638,3 +646,4 @@ body {
   width: auto;
 
 }
+
