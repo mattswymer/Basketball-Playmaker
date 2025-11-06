@@ -944,7 +944,14 @@ stopAnimation() {
     }
     return { ...points[points.length - 1] };
   }
+shouldSaveState() {
+    return !this.state.isAnimating && !this.state.isExporting;
+  }
 
+  isDragSignificant(x, y) {
+    const dist = Math.hypot(x - this.state.dragStartX, y - this.state.dragStartY);
+    return dist >= this.config.interaction.clickTolerance;
+  }
   // ==========================================================================
   // EVENT HANDLER METHODS
   // [REFACTOR] Converted to arrow functions to auto-bind `this`.
@@ -1747,6 +1754,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
