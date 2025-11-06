@@ -26,7 +26,7 @@ class PlaymakerApp {
         clickTolerance: 10,
         arrowLength: 12,
         screenWidth: 12,
-        dribbleAmplitude: 10,
+        dribbleAmplitude: 8,
         dribbleFrequency: 4,
         dribbleSegmentLength: 10,
         shootLineOffset: 4,
@@ -1779,6 +1779,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
