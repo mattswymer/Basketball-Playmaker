@@ -693,19 +693,10 @@ switchFrame(newFrameIndex) {
     if (newFrameIndex < 0 || newFrameIndex >= this.state.frames.length) {
       newFrameIndex = Math.max(0, this.state.frames.length - 1);
     }
-    
-    const oldFrameIndex = this.state.currentFrameIndex; // Get old index
-    this.state.currentFrameIndex = newFrameIndex; // Set new index
+    this.state.currentFrameIndex = newFrameIndex;
 
     if (this.state.frames.length > 0 && this.state.frames[newFrameIndex]) {
-      
-      // --- OPTIMIZATION ---
-      if (oldFrameIndex !== newFrameIndex) {
-        this.updateFrameThumbnail(oldFrameIndex); // De-activate old frame
-        this.updateFrameThumbnail(newFrameIndex); // Activate new frame
-      }
-      // --- End Optimization ---
-
+      this.renderFrameList(); // <<< THIS IS THE FIX
       this.draw();
       this.dom.frameNotes.value = this.state.frames[newFrameIndex].notes;
     } else {
@@ -1741,6 +1732,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
