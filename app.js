@@ -550,7 +550,11 @@ this.config = {
             const dx = end.x - start.x;
             const dy = end.y - start.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
-            const margin = (type === 'screen' || type === 'shoot') ? 4 : (this.config.line.arrowLength + 2);
+            
+            let margin = this.config.geometry.lineEndPullback.defaultArrow;
+            if (type === 'screen') margin = this.config.geometry.lineEndPullVback.screen;
+            if (type === 'shoot') margin = this.config.geometry.lineEndPullback.shoot;
+
             const pullBack = this.config.player.radius + margin;
             if (dist > pullBack) {
               const ratio = (dist - pullBack) / dist;
@@ -1741,6 +1745,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
