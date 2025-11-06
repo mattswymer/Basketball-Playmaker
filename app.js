@@ -188,8 +188,8 @@ async safeOperation(operation, errorMessage) {
     this.dom.redoBtn.disabled = this.state.historyIndex >= this.state.history.length - 1;
   }
 
-  saveState() {
-    if (this.state.isAnimating || this.state.isExporting) return;
+saveState() {
+    if (!this.shouldSaveState()) return;
     if (this.state.historyIndex < this.state.history.length - 1) {
       this.state.history = this.state.history.slice(0, this.state.historyIndex + 1);
     }
@@ -1361,8 +1361,7 @@ handleKeyDown = (e) => {
       this.state.isDragging = false;
       this.state.draggingPlayer = null;
 
-      const dist = Math.hypot(x - this.state.dragStartX, y - this.state.dragStartY);
-      if (dist >= this.config.interaction.clickTolerance) {
+if (this.isDragSignificant(x, y)) {
         this.saveState();
       }
 
@@ -1748,6 +1747,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
