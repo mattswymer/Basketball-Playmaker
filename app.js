@@ -500,30 +500,44 @@ saveState() {
     this.ctx.stroke();
   }
 
-  drawDribbleLine(start, end) {
+drawDribbleLine(start, end) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist === 0) return;
+    const totalDist = Math.sqrt(dx * dx + dy * dy);
+    if (totalDist === 0) return;
 
     const angle = Math.atan2(dy, dx);
-    const segments = Math.floor(dist / this.config.line.dribbleSegmentLength);
     const amplitude = this.config.line.dribbleAmplitude;
-    const frequency = this.config.line.dribbleFrequency;
+    const stepLength = this.config.line.dribbleSegmentLength;
+    const stepsPerWave = this.config.line.dribbleFrequency; // Steps per 2*PI wave
+    
+    const numSteps = Math.floor(totalDist / stepLength);
 
     this.ctx.beginPath();
     this.ctx.moveTo(start.x, start.y);
-    for (let i = 1; i <= segments; i++) {
-      const t = i / segments;
+
+    for (let i = 1; i <= numSteps; i++) {
+      const currentDist = i * stepLength;
+      
+      // 't' is the percentage of distance traveled so far
+      const t = currentDist / totalDist;
       const x_linear = start.x + dx * t;
       const y_linear = start.y + dy * t;
 
-      const offset = Math.sin(t * Math.PI * frequency) * amplitude;
+      // --- THE FIX ---
+      // The sine input is based on the step number (i), not the
+      // percentage (t). This creates a wave of constant length.
+      const sin_input = (i / stepsPerWave) * (2 * Math.PI);
+      const offset = Math.sin(sin_input) * amplitude;
+      // --- END FIX ---
+
       const offsetX = Math.sin(angle) * offset;
       const offsetY = -Math.cos(angle) * offset;
 
       this.ctx.lineTo(x_linear + offsetX, y_linear + offsetY);
     }
+
+    // Draw the final segment to the exact end point
     this.ctx.lineTo(end.x, end.y);
     this.ctx.stroke();
     this.drawArrowhead(end, angle);
@@ -1765,6 +1779,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
