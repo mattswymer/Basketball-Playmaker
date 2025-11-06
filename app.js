@@ -245,6 +245,23 @@ class PlaymakerApp {
     });
   }
 
+  updateFrameThumbnail(frameIndex) {
+    if (frameIndex < 0 || frameIndex >= this.dom.frameList.children.length) return;
+    
+    const frameEl = this.dom.frameList.children[frameIndex];
+    if (frameEl) {
+      frameEl.className = 'frame-thumbnail'; // Reset class list
+      
+      // Add 'active' class only if it matches the correct state
+      if (frameIndex === this.state.currentFrameIndex && !this.state.isAnimating) {
+        frameEl.classList.add('active');
+      }
+      if (frameIndex === this.state.currentFramePlaying && this.state.isAnimating) {
+        frameEl.classList.add('active');
+      }
+    }
+  }
+
   // ==========================================================================
   // DRAWING & CANVAS
   // ==========================================================================
@@ -1724,6 +1741,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
