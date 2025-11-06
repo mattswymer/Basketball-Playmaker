@@ -1456,52 +1456,56 @@ handleKeyDown = (e) => {
     e.target.value = null; // Reset input
   }
 
-  handleLoad(file) {
+handleLoadFile = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      this.handleLoad(file);
+    }
+    e.target.value = null;
+  }
+
+  async handleLoad(file) {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const loadedData = JSON.parse(event.target.result);
-        if (!loadedData.frames || !Array.isArray(loadedData.frames)) {
-          throw new Error('Invalid play file format');
-        }
-        this.handleNewPlay(false); // Clear existing state
-        this.state.courtType = loadedData.courtType || 'half';
-        this.state.frames = loadedData.frames;
-        this.state.nextFrameId = loadedData.nextFrameId || (this.state.frames.length + 1);
 
-        if (loadedData.nextPlayerId) {
-          this.state.nextPlayerId = loadedData.nextPlayerId;
-        } else {
-          const maxId = this.state.frames.reduce((max, frame) => {
-            const frameMax = frame.players.reduce((pMax, p) => Math.max(pMax, p.id), 0);
-            return Math.max(max, frameMax);
-          }, 0);
-          this.state.nextPlayerId = maxId + 1;
-        }
+    try {
+      const text = await file.text(); // Modern API
+      const loadedData = JSON.parse(text);
 
-        this.state.frames.forEach(frame => {
-          frame.lines.forEach(line => { if (!line.id) line.id = this.lineIdCounter++; });
-        });
-
-        this.state.history = [this.copyFrames(this.state.frames)];
-        this.state.historyIndex = 0;
-        this.updateHistoryButtons();
-        this.state.currentFrameIndex = 0;
-
-        this.dom.playNameInput.value = loadedData.playName || '';
-        this.dom.courtToggle.value = this.state.courtType;
-        this.switchFrame(0);
-      } catch (error) {
-        console.error('Load error:', error);
-        this.showAlert(`Could not load play file: ${error.message}`);
+      if (!loadedData.frames || !Array.isArray(loadedData.frames)) {
+        throw new Error('Invalid play file format');
       }
-    };
-    reader.onerror = () => {
-      console.error('File read error:', reader.error);
-      this.showAlert('Error reading file.');
-    };
-    reader.readText(file);
+
+      this.handleNewPlay(false);
+      this.state.courtType = loadedData.courtType || 'half';
+      this.state.frames = loadedData.frames;
+      this.state.nextFrameId = loadedData.nextFrameId || (this.state.frames.length + 1);
+
+      // Calculate nextPlayerId from existing data
+      const maxId = this.state.frames.reduce((max, frame) => {
+        const frameMax = frame.players.reduce((pMax, p) => Math.max(pMax, p.id), 0);
+        return Math.max(max, frameMax);
+      }, 0);
+      this.state.nextPlayerId = loadedData.nextPlayerId || maxId + 1;
+
+      // Ensure all lines have IDs
+      this.state.frames.forEach(frame => {
+        frame.lines.forEach(line => {
+          if (!line.id) line.id = this.lineIdCounter++;
+        });
+      });
+
+      this.state.history = [this.copyFrames(this.state.frames)];
+      this.state.historyIndex = 0;
+      this.updateHistoryButtons();
+
+      this.dom.playNameInput.value = loadedData.playName || '';
+      this.dom.courtToggle.value = this.state.courtType;
+      this.switchFrame(0);
+
+    } catch (error) {
+      console.error('Load error:', error);
+      this.showAlert(`Could not load play file: ${error.message}`);
+    }
   }
 
   handleExportPDF = () => {
@@ -1673,4 +1677,5 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
