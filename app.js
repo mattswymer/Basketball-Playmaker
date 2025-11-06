@@ -803,7 +803,7 @@ class PlaymakerApp {
     this.saveState();
   }
 
-  stopAnimation() {
+stopAnimation() {
     if (this.state.isAnimating) {
       if (this.state.animationFrameId) {
         cancelAnimationFrame(this.state.animationFrameId);
@@ -811,6 +811,7 @@ class PlaymakerApp {
       }
       this.state.isAnimating = false;
       this.state.animationStartTime = 0;
+      this.state.currentFramePlaying = 0; // ADD THIS
       this.dom.animateBtn.textContent = '▶️ Animate';
       this.dom.animateBtn.classList.remove('btn-danger');
       this.dom.animateBtn.classList.add('btn-primary');
@@ -1672,3 +1673,4 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
