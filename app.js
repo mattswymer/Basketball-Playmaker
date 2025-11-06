@@ -1473,16 +1473,16 @@ handleLoadFile = (e) => {
     e.target.value = null;
   }
 
-  async handleLoad(file) {
+async handleLoad(file) {
     if (!file) return;
 
     try {
-      const text = await file.text(); // Modern API
+      const text = await file.text();
       const loadedData = JSON.parse(text);
 
-      if (!loadedData.frames || !Array.isArray(loadedData.frames)) {
-        throw new Error('Invalid play file format');
-      }
+      // --- ENHANCEMENT: Call validation function ---
+      this.validatePlayData(loadedData);
+      // --- End Enhancement ---
 
       this.handleNewPlay(false);
       this.state.courtType = loadedData.courtType || 'half';
@@ -1515,6 +1515,44 @@ handleLoadFile = (e) => {
       console.error('Load error:', error);
       this.showAlert(`Could not load play file: ${error.message}`);
     }
+  }
+
+  // --- NEW FUNCTION ---
+  validatePlayData(data) {
+    // Note: This is a basic validator. A production app might use a
+    // library like Zod or Ajv for more comprehensive schema checking.
+    const schema = {
+      playName: 'string',
+      courtType: ['half', 'full'],
+      frames: 'array',
+      nextFrameId: 'number',
+      nextPlayerId: 'number'
+    };
+
+    // Validate required fields
+    if (!data.frames || !Array.isArray(data.frames)) {
+      throw new Error('Invalid frames data');
+    }
+    
+    // Check other top-level properties (optional)
+    if (data.hasOwnProperty('courtType') && !schema.courtType.includes(data.courtType)) {
+      throw new Error('Invalid courtType');
+    }
+    if (data.hasOwnProperty('playName') && typeof data.playName !== schema.playName) {
+       throw new Error('Invalid playName');
+    }
+    // ... add more checks for nextFrameId, nextPlayerId ...
+
+    // Validate frame structure
+    data.frames.forEach((frame, i) => {
+      if (typeof frame !== 'object' || frame === null) throw new Error(`Frame ${i} is not an object`);
+      if (!frame.hasOwnProperty('id') || typeof frame.id !== 'number') throw new Error(`Frame ${i} missing or invalid id`);
+      if (!Array.isArray(frame.players)) throw new Error(`Frame ${i} invalid players array`);
+      if (!Array.isArray(frame.lines)) throw new Error(`Frame ${i} invalid lines array`);
+      // TODO: Add deep validation for player and line objects
+    });
+
+    return true;
   }
 
   handleExportPDF = () => {
@@ -1686,6 +1724,7 @@ document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
 
 });
+
 
 
 
