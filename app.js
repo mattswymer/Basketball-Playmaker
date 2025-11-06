@@ -1143,13 +1143,16 @@ class PlaymakerApp {
     }
   }
 
-  handleKeyDown = (e) => {
+handleKeyDown = (e) => {
     if (e.ctrlKey || e.metaKey) {
       if (e.key === 'z') { e.preventDefault(); this.undo(); }
       else if (e.key === 'y') { e.preventDefault(); this.redo(); }
     }
 
-    if (this.state.selectedPlayerId) {
+    const targetTagName = e.target ? e.target.tagName : '';
+    const isTyping = targetTagName === 'INPUT' || targetTagName === 'TEXTAREA' || targetTagName === 'SELECT';
+
+    if (this.state.selectedPlayerId && !isTyping) { // <-- FIX: Added !isTyping condition
       const key = e.key.toLowerCase();
       const toolMap = {
         'm': 'cut',
@@ -1667,4 +1670,5 @@ class PlaymakerApp {
 // ============================================================================
 document.addEventListener('DOMContentLoaded', () => {
   new PlaymakerApp();
+
 });
