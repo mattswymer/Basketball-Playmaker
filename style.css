@@ -307,7 +307,7 @@ body {
   box-shadow: var(--shadow-md);
   transition: box-shadow var(--transition-slow), border-color var(--transition-slow);
   cursor: grab;
-  touch-action: none;
+  touch-action: manipulation;
   max-width: 100%;
   height: auto;
 }
@@ -646,4 +646,5 @@ body {
   width: auto;
 
 }
+
 
