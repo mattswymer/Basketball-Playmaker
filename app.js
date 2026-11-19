@@ -26,9 +26,9 @@ class PlaymakerApp {
         clickTolerance: 10,
         arrowLength: 12,
         screenWidth: 12,
-        dribbleAmplitude: 5,
-        dribbleFrequency: 4,
-        dribbleSegmentLength: 10,
+        dribbleAmplitude: 3.5,
+        dribbleFrequency: 1,
+        dribbleSegmentLength: 90,
         shootLineOffset: 4,
         passLineDash: [5, 10]
       },
@@ -562,6 +562,10 @@ async safeOperation(operation, errorMessage) {
   loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
+      // Keep canvases origin-clean so PDF export (toDataURL) and video
+      // recording (captureStream) remain available when artwork is served
+      // from a CORS-enabled asset host. This is harmless for same-origin files.
+      img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error(`Failed to load: ${src}`));
       img.src = src;
@@ -770,8 +774,8 @@ async safeOperation(operation, errorMessage) {
     this.ctx.stroke();
   }
 
-  drawArrowhead(end, angle) {
-    const L = this.config.line.arrowLength;
+  drawArrowhead(end, angle, length = this.config.line.arrowLength) {
+    const L = length;
     this.ctx.setLineDash([]);
     this.ctx.beginPath();
     this.ctx.moveTo(end.x, end.y);
@@ -794,22 +798,31 @@ async safeOperation(operation, errorMessage) {
 drawDribbleLine(start, end, drawArrow = true) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
-    const totalDist = Math.hypot(dx, dy);
-    if (totalDist < 1) return;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 1) return;
+
     const angle = Math.atan2(dy, dx);
-    const amplitude = this.config.line.dribbleAmplitude;
-    const wavelength = Math.max(30, this.config.line.dribbleSegmentLength * this.config.line.dribbleFrequency);
-    const sampleSpacing = 3;
     const normalX = -Math.sin(angle);
     const normalY = Math.cos(angle);
+    // One broad, shallow S-curve per segment. The previous repeated sine
+    // wave read as a shaky zig-zag, especially at normal court scale.
+    const bend = Math.min(8, distance * 0.035);
+    const control1 = {
+      x: start.x + dx / 3 + normalX * bend,
+      y: start.y + dy / 3 + normalY * bend
+    };
+    const control2 = {
+      x: start.x + dx * 2 / 3 - normalX * bend,
+      y: start.y + dy * 2 / 3 - normalY * bend
+    };
+
     this.ctx.beginPath();
     this.ctx.moveTo(start.x, start.y);
-    for (let distance = sampleSpacing; distance < totalDist; distance += sampleSpacing) {
-      const t = distance / totalDist;
-      const offset = Math.sin((distance / wavelength) * Math.PI * 2) * amplitude;
-      this.ctx.lineTo(start.x + dx * t + normalX * offset, start.y + dy * t + normalY * offset);
-    }
-    this.ctx.lineTo(end.x, end.y);
+    this.ctx.bezierCurveTo(
+      control1.x, control1.y,
+      control2.x, control2.y,
+      end.x, end.y
+    );
     this.ctx.stroke();
     if (drawArrow) this.drawArrowhead(end, angle);
   }
@@ -890,7 +903,7 @@ drawLines(lines, frame = null) {
 
           if (i === points.length - 2) {
             // One arrowhead centered over the two parallel shot lines.
-            this.drawArrowhead(end, angle);
+            this.drawArrowhead(end, angle, 22);
           }
           continue;
         }
