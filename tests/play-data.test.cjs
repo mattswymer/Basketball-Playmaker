@@ -101,9 +101,9 @@ test('clamps imported players and route points to the court', () => {
 
   const normalized = PlayData.normalizePlayData(play);
   assert.equal(normalized.frames[0].players[0].x, 15);
-  assert.equal(normalized.frames[0].players[0].y, 585);
+  assert.equal(normalized.frames[0].players[0].y, 885);
   assert.equal(normalized.frames[0].lines[0].points[1].x, 0);
-  assert.equal(normalized.frames[0].lines[0].points[1].y, 600);
+  assert.equal(normalized.frames[0].lines[0].points[1].y, 900);
 });
 
 test('repairs inconsistent multiple ball holders by keeping one offensive holder', () => {
