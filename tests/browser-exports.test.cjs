@@ -64,6 +64,29 @@ function startServer() {
       document.querySelector('#export-video-btn')
     );
 
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector('#play-canvas');
+      if (!canvas || !canvas.width || !canvas.height) return false;
+      const pixel = canvas.getContext('2d').getImageData(
+        Math.floor(canvas.width * 0.08), Math.floor(canvas.height * 0.08), 1, 1
+      ).data;
+      return !(pixel[0] === 248 && pixel[1] === 250 && pixel[2] === 252);
+    }, { timeout: 10000 });
+
+    // Verify both court modes retain their background artwork.
+    const courtToggle = page.locator('#court-toggle');
+    for (const courtType of ['half', 'full']) {
+      await courtToggle.selectOption(courtType);
+      await page.waitForTimeout(100);
+      const backgroundVisible = await page.locator('#play-canvas').evaluate(canvas => {
+        const pixel = canvas.getContext('2d').getImageData(
+          Math.floor(canvas.width * 0.08), Math.floor(canvas.height * 0.08), 1, 1
+        ).data;
+        return !(pixel[0] === 248 && pixel[1] === 250 && pixel[2] === 252);
+      });
+      assert.equal(backgroundVisible, true, courtType + '-court artwork should remain visible');
+    }
+
     // Create two frames so video export has an actual sequence to record.
     await page.locator('[data-player="1"]').click();
     const canvas = page.locator('#play-canvas');
