@@ -5,8 +5,10 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  const WIDTH = 800;
-  const HEIGHT = 600;
+  const WIDTH = 1512;
+  const HEIGHT = 900;
+  const LEGACY_WIDTH = 800;
+  const LEGACY_HEIGHT = 600;
   const MAX_FILE_BYTES = 5 * 1024 * 1024;
   const MAX_FRAMES = 500;
   const MAX_POINTS = 250;
@@ -38,7 +40,7 @@
     if (data.courtType !== undefined && !['half', 'full'].includes(data.courtType)) {
       throw new Error('Court type must be half or full');
     }
-    if (data.formatVersion !== undefined && data.formatVersion !== 1) {
+    if (data.formatVersion !== undefined && ![1, 2].includes(data.formatVersion)) {
       throw new Error('This play file uses an unsupported format version');
     }
     ['nextFrameId', 'nextPlayerId'].forEach(key => {
@@ -139,18 +141,24 @@
 
   function normalizePlayData(data) {
     validatePlayData(data);
+    // Version 1 plays used the old 800x600 drawing plane. Migrate those
+    // saved positions and paths into the new 1512x900 NFHS master plane.
+    const legacyScaleX = data.formatVersion === 2 ? 1 : WIDTH / LEGACY_WIDTH;
+    const legacyScaleY = data.formatVersion === 2 ? 1 : HEIGHT / LEGACY_HEIGHT;
+    const legacyRadiusScale = data.formatVersion === 2 ? 1 : Math.sqrt(legacyScaleX * legacyScaleY);
     const frames = data.frames.map(frame => ({
       id: frame.id,
       notes: frame.notes || '',
       players: frame.players.map(player => {
-        const radius = Number.isFinite(player.radius) ? Math.min(player.radius, 50) : 15;
+        const sourceRadius = Number.isFinite(player.radius) ? Math.min(player.radius, 50) : 15;
+        const radius = sourceRadius * legacyRadiusScale;
         const safeRadius = Math.min(radius, WIDTH / 2, HEIGHT / 2);
         return {
           id: player.id,
           label: player.label,
           isOffense: !player.label.startsWith('X'),
-          x: clamp(player.x, safeRadius, WIDTH - safeRadius),
-          y: clamp(player.y, safeRadius, HEIGHT - safeRadius),
+          x: clamp(player.x * legacyScaleX, safeRadius, WIDTH - safeRadius),
+          y: clamp(player.y * legacyScaleY, safeRadius, HEIGHT - safeRadius),
           radius,
           hasBall: Boolean(player.hasBall)
         };
@@ -158,8 +166,8 @@
       lines: frame.lines.map(line => ({
         ...line,
         points: line.points.map(point => ({
-          x: clamp(point.x, 0, WIDTH),
-          y: clamp(point.y, 0, HEIGHT)
+          x: clamp(point.x * legacyScaleX, 0, WIDTH),
+          y: clamp(point.y * legacyScaleY, 0, HEIGHT)
         }))
       }))
     }));
