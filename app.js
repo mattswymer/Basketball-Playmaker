@@ -129,11 +129,9 @@ async safeOperation(operation, errorMessage) {
    * Loads images, binds events, and performs the first render.
    */
   async init() {
-    // Use the NFHS master court at 1.5 pixels per inch (18 px/ft).
-    // Device-pixel ratio is applied only to the backing store for crisp lines.
-    this.dom.canvas.width = Math.round(this.config.canvas.width * this.pixelRatio);
-    this.dom.canvas.height = Math.round(this.config.canvas.height * this.pixelRatio);
-    this.ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    // Half court is displayed vertically (baseline at top, half-court at bottom).
+    // Full court remains horizontal, baseline to baseline.
+    this.configureCanvasOrientation();
 
     this.bindEventHandlers();
     this.initializeToolboxIcons();
@@ -307,6 +305,7 @@ async safeOperation(operation, errorMessage) {
       }
 
       this.state.courtType = backup.courtType;
+      this.configureCanvasOrientation();
       this.state.frames = backup.frames;
       this.state.nextFrameId = backup.nextFrameId;
       this.state.nextPlayerId = backup.nextPlayerId;
@@ -924,6 +923,24 @@ drawLines(lines, frame = null) {
   /**
    * Main render loop. Clears canvas, draws court, lines, and players.
    */
+  configureCanvasOrientation() {
+    const halfCourt = this.state.courtType !== 'full';
+    const displayWidth = halfCourt ? 900 : 1512;
+    const displayHeight = halfCourt ? 756 : 900;
+    this.dom.canvas.width = Math.round(displayWidth * this.pixelRatio);
+    this.dom.canvas.height = Math.round(displayHeight * this.pixelRatio);
+    this.dom.canvas.style.aspectRatio = `${displayWidth} / ${displayHeight}`;
+    this.dom.canvas.classList.toggle('half-court-view', halfCourt);
+    this.dom.canvas.classList.toggle('full-court-view', !halfCourt);
+    if (halfCourt) {
+      // Map the left 42 ft x 50 ft master-court half into a 50 ft x 42 ft
+      // portrait display: x' = y, y' = x. The source coordinates stay stable.
+      this.ctx.setTransform(0, this.pixelRatio, this.pixelRatio, 0, 0, 0);
+    } else {
+      this.ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+    }
+  }
+
   drawCourtBackground(ctx, courtType, width, height) {
     // NFHS court geometry: 84 ft x 50 ft at 18 px/ft (1.5 px/in).
     // The logical canvas is exactly 1512 x 900; court lines are 3 px wide.
@@ -938,23 +955,29 @@ drawLines(lines, frame = null) {
     floor.addColorStop(1, '#a77d54');
     ctx.fillStyle = floor;
     ctx.fillRect(0, 0, 1512, 900);
-    for (let x = 0; x <= 1512; x += 36) {
-      ctx.fillStyle = (x / 36) % 2 ? 'rgba(92,57,30,0.045)' : 'rgba(255,245,220,0.07)';
-      ctx.fillRect(x, 0, 18, 900);
-      ctx.strokeStyle = 'rgba(85,55,32,0.16)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, 900);
-      ctx.stroke();
+    if (courtType === 'full') {
+      // Full-court boards run horizontally from baseline to baseline.
+      for (let y = 0; y <= 900; y += 36) {
+        ctx.fillStyle = (y / 36) % 2 ? 'rgba(92,57,30,0.045)' : 'rgba(255,245,220,0.07)';
+        ctx.fillRect(0, y, 1512, 18);
+        ctx.strokeStyle = 'rgba(85,55,32,0.16)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1512, y); ctx.stroke();
+      }
+    } else {
+      // Half-court boards run vertically from the baseline to half court.
+      for (let x = 0; x <= 1512; x += 36) {
+        ctx.fillStyle = (x / 36) % 2 ? 'rgba(92,57,30,0.045)' : 'rgba(255,245,220,0.07)';
+        ctx.fillRect(x, 0, 18, 900);
+        ctx.strokeStyle = 'rgba(85,55,32,0.16)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 900); ctx.stroke();
+      }
     }
     for (let y = 45; y < 900; y += 108) {
       ctx.strokeStyle = 'rgba(255,245,220,0.08)';
       ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(1512, y + 3);
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1512, y + 3); ctx.stroke();
     }
 
     ctx.strokeStyle = 'rgba(255,255,255,0.96)';
@@ -1181,8 +1204,9 @@ switchFrame(newFrameIndex, options = {}) {
     const scaleY = canvasRect.height / this.config.canvas.height;
     const canvasLeft = canvasRect.left - courtRect.left;
     const canvasTop = canvasRect.top - courtRect.top;
-    const playerX = canvasLeft + player.x * scaleX;
-    const playerY = canvasTop + player.y * scaleY;
+    const halfCourt = this.state.courtType !== 'full';
+    const playerX = canvasLeft + (halfCourt ? player.y : player.x) * scaleX;
+    const playerY = canvasTop + (halfCourt ? player.x : player.y) * scaleY;
     this.dom.actionWheel.classList.remove('hidden');
     this.dom.actionWheel.classList.add('visible');
     const width = this.dom.actionWheel.offsetWidth;
@@ -1410,23 +1434,27 @@ stopAnimation() {
 
   getMousePos(e) {
     const rect = this.dom.canvas.getBoundingClientRect();
-    const scaleX = this.config.canvas.width / rect.width;
-    const scaleY = this.config.canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-
-    return { x: x, y: y, viewportX: e.clientX, viewportY: e.clientY };
+    const halfCourt = this.state.courtType !== 'full';
+    const displayWidth = halfCourt ? 900 : 1512;
+    const displayHeight = halfCourt ? 756 : 900;
+    const displayX = (e.clientX - rect.left) * (displayWidth / rect.width);
+    const displayY = (e.clientY - rect.top) * (displayHeight / rect.height);
+    const x = halfCourt ? displayY : displayX;
+    const y = halfCourt ? displayX : displayY;
+    return { x, y, viewportX: e.clientX, viewportY: e.clientY };
   }
 
   getTouchPos(e) {
     const touch = e.touches[0] || e.changedTouches[0];
     const rect = this.dom.canvas.getBoundingClientRect();
-    const scaleX = this.config.canvas.width / rect.width;
-    const scaleY = this.config.canvas.height / rect.height;
-    const x = (touch.clientX - rect.left) * scaleX;
-    const y = (touch.clientY - rect.top) * scaleY;
-
-    return { x: x, y: y, viewportX: touch.clientX, viewportY: touch.clientY };
+    const halfCourt = this.state.courtType !== 'full';
+    const displayWidth = halfCourt ? 900 : 1512;
+    const displayHeight = halfCourt ? 756 : 900;
+    const displayX = (touch.clientX - rect.left) * (displayWidth / rect.width);
+    const displayY = (touch.clientY - rect.top) * (displayHeight / rect.height);
+    const x = halfCourt ? displayY : displayX;
+    const y = halfCourt ? displayX : displayY;
+    return { x, y, viewportX: touch.clientX, viewportY: touch.clientY };
   }
 
   getPlayerAtCoord(x, y) {
@@ -1521,6 +1549,7 @@ shouldSaveState() {
         return;
       }
       this.state.courtType = e.target.value;
+      this.configureCanvasOrientation();
       this.markDirty();
       this.renderFrameList();
       this.draw();
@@ -2195,6 +2224,7 @@ shouldSaveState() {
 
       this.handleNewPlay(false);
       this.state.courtType = loadedData.courtType;
+      this.configureCanvasOrientation();
       this.state.frames = loadedData.frames;
       this.state.nextFrameId = loadedData.nextFrameId;
       this.state.nextPlayerId = loadedData.nextPlayerId;
