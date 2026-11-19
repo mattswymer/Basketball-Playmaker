@@ -145,7 +145,7 @@
     // saved positions and paths into the new 1512x900 NFHS master plane.
     const legacyScaleX = data.formatVersion === 2 ? 1 : WIDTH / LEGACY_WIDTH;
     const legacyScaleY = data.formatVersion === 2 ? 1 : HEIGHT / LEGACY_HEIGHT;
-    const legacyRadiusScale = data.formatVersion === 2 ? 1 : Math.sqrt(legacyScaleX * legacyScaleY);
+    const legacyRadiusScale = data.formatVersion === 2 ? 1 : legacyScaleX;
     const frames = data.frames.map(frame => ({
       id: frame.id,
       notes: frame.notes || '',
