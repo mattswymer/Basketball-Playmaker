@@ -64,6 +64,16 @@ function startServer() {
       document.querySelector('#export-video-btn')
     );
 
+    const masterCourtSize = await page.locator('#play-canvas').evaluate(el => ({ width: el.width, height: el.height }));
+    assert.deepEqual(masterCourtSize, { width: 1512, height: 900 }, 'Court must use the NFHS 1512x900 master dimensions at DPR 1');
+    const basketballIconPixels = await page.locator('#wheel-ball canvas').evaluate(icon => {
+      const pixels = icon.getContext('2d').getImageData(0, 0, icon.width, icon.height).data;
+      let visible = 0;
+      for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) visible++;
+      return visible;
+    });
+    assert.ok(basketballIconPixels > 20, 'Basketball emoji should render in the radial action wheel');
+
     await page.waitForFunction(() => {
       const canvas = document.querySelector('#play-canvas');
       if (!canvas || !canvas.width || !canvas.height) return false;
