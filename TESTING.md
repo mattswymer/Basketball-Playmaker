@@ -59,8 +59,12 @@ These checks exercise browser behavior that the Node.js unit tests do not simula
 - [ ] Try malformed JSON and a malformed play structure. The current play should remain intact.
 - [ ] Make changes, reload the page, and choose to restore the local recovery copy.
 - [ ] Dismiss a recovery prompt and confirm the rejected recovery copy is removed.
-- [ ] Export a PDF with short and very long coaching notes. Confirm notes continue onto additional pages and the editor returns to the previously selected frame.
-- [ ] Export a WebM video. Confirm playback, the original selected frame is restored, and a second export can be started.
+- [ ] Export a PDF with short and very long coaching notes. Confirm notes continue onto additional pages, the file is non-empty, the download link remains available, and the editor returns to the previously selected frame.
+- [ ] Temporarily block external network access and export a PDF. The bundled jsPDF library should still work.
+- [ ] Export a video in a browser supporting WebM. Confirm the file plays, has non-zero size, the download link remains available, and the original selected frame is restored.
+- [ ] Test video export in a browser that prefers MP4, if available. Confirm the file uses the matching extension.
+- [ ] Dismiss the export-ready notice and run another export. The prior download URL should be released and the new link should work.
+- [ ] Cause a PDF or video export error. Confirm the error message remains visible after the loading overlay closes and the export button becomes usable again.
 
 ### Responsive and accessibility
 
