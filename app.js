@@ -1200,11 +1200,13 @@ switchFrame(newFrameIndex, options = {}) {
     this.state.selectedPlayerId = player.id;
     const courtRect = this.dom.courtContainer.getBoundingClientRect();
     const canvasRect = this.dom.canvas.getBoundingClientRect();
-    const scaleX = canvasRect.width / this.config.canvas.width;
-    const scaleY = canvasRect.height / this.config.canvas.height;
+    const halfCourt = this.state.courtType !== 'full';
+    const displayWidth = halfCourt ? 900 : 1512;
+    const displayHeight = halfCourt ? 756 : 900;
+    const scaleX = canvasRect.width / displayWidth;
+    const scaleY = canvasRect.height / displayHeight;
     const canvasLeft = canvasRect.left - courtRect.left;
     const canvasTop = canvasRect.top - courtRect.top;
-    const halfCourt = this.state.courtType !== 'full';
     const playerX = canvasLeft + (halfCourt ? player.y : player.x) * scaleX;
     const playerY = canvasTop + (halfCourt ? player.x : player.y) * scaleY;
     this.dom.actionWheel.classList.remove('hidden');
