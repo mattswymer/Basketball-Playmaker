@@ -191,7 +191,7 @@
     const maxPlayerId = frames.reduce((max, frame) =>
       frame.players.reduce((inner, player) => Math.max(inner, player.id), max), 0);
     return {
-      formatVersion: 1,
+      formatVersion: 2,
       playName: data.playName || '',
       courtType: data.courtType || 'half',
       frames,
