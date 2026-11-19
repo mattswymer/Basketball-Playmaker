@@ -23,7 +23,7 @@ The application is static and does not require a server or account.
 2. Open `index.html` in a modern browser.
 3. Keep the `images` directory alongside the HTML, CSS, and JavaScript files.
 
-The PDF export uses jsPDF from a CDN, so PDF creation requires an internet connection. Video export depends on the browser's Canvas capture and MediaRecorder support. Chrome and Edge are recommended for WebM export.
+PDF creation uses the jsPDF library bundled in the repository, so it does not depend on a third-party CDN. Video export uses the browser's Canvas capture and MediaRecorder APIs; the app selects a compatible WebM or MP4 recording format when the browser supports one. Keep the tab visible until recording finishes. Completed exports show a persistent download link in the app, even when the browser blocks the automatic download attempt.
 
 ## Basic workflow
 
@@ -76,6 +76,9 @@ Starting a new play or loading another file prompts before replacing unsaved cha
 | `style.css` | Responsive visual layout |
 | `app.js` | Canvas rendering, editing, history, animation, and exports |
 | `play-data.js` | JSON validation and legacy-file normalization |
+| `export-utils.js` | Compatible video recording setup and export file helpers |
+| `vendor/jspdf.umd.min.js` | Bundled PDF generation library |
+| `vendor/JSPDF-LICENSE.txt` | jsPDF MIT license |
 | `images/` | Half-court and full-court artwork |
 
 ## Development checks
@@ -89,7 +92,7 @@ npm test
 npm run check
 ```
 
-Tests cover play-file validation, compatibility normalization, ID repair, court coordinate normalization, next-frame movement, and ball-possession transfers. Use [TESTING.md](TESTING.md) for the browser-level interaction, responsive-layout, accessibility, and export regression checklist before a release.
+Tests cover play-file validation, compatibility normalization, ID repair, court coordinate normalization, next-frame movement, ball-possession transfers, export filename handling, video format selection and fallback, and PDF Blob creation. Use [TESTING.md](TESTING.md) for the browser-level interaction, responsive-layout, accessibility, and export regression checklist before a release.
 
 ## License
 
