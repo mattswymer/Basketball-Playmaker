@@ -23,7 +23,7 @@ The application is static and does not require a server or account.
 2. Open `index.html` in a modern browser.
 3. Keep the `images` directory alongside the HTML, CSS, and JavaScript files.
 
-PDF creation uses the jsPDF library bundled in the repository, so it does not depend on a third-party CDN. Video export uses the browser's Canvas capture and MediaRecorder APIs; the app selects a compatible WebM or MP4 recording format when the browser supports one. Keep the tab visible until recording finishes. Completed exports show a persistent download link in the app, even when the browser blocks the automatic download attempt.
+PDF creation uses the jsPDF library bundled in the repository, so it does not depend on a third-party CDN. Video export uses the browser's Canvas capture and MediaRecorder APIs; the app selects a compatible WebM or MP4 recording format when the browser supports one. Keep the tab visible until recording finishes. After generation, click the in-app Download link to save the file. The app deliberately does not trigger a second, synthetic download click after its asynchronous export work, because browsers can block that click.
 
 ## Basic workflow
 
