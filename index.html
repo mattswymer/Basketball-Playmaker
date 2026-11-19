@@ -12,9 +12,9 @@
 
   <link rel="stylesheet" href="style.css" />
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" defer></script>
-
+  <script src="vendor/jspdf.umd.min.js" defer></script>
   <script src="play-data.js" defer></script>
+  <script src="export-utils.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -283,19 +283,18 @@
             <li>Press Escape to cancel; Undo restores deleted actions</li>
           </ul>
         </div>
-
-        <div id="donationLinks">
-          Like this app?
-          <a href="https://www.paypal.me/mattswymer84" target="_blank" rel="noopener noreferrer" title="PayPal">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/PayPal_2024_%28Icon%29.svg/250px-PayPal_2024_%28Icon%29.svg.png" alt="PayPal" />
-          </a>
-          <a href="https://venmo.com/mattswymer" target="_blank" rel="noopener noreferrer" title="Venmo">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Venmo_logo.png/1200px-Venmo_logo.png" alt="Venmo" />
-          </a>
-        </div>
       </aside>
     </main>
   </div>
+
+  <aside id="export-download-panel" class="export-download-panel hidden" aria-label="Export ready">
+    <div class="export-download-copy">
+      <strong id="export-download-heading">Export ready</strong>
+      <span id="export-download-message">Your file is ready to download.</span>
+    </div>
+    <a id="export-download-link" class="export-download-link" href="#" download>Download file</a>
+    <button id="export-download-dismiss" class="export-download-dismiss" type="button" aria-label="Dismiss download notice">Dismiss</button>
+  </aside>
 
   <div id="loading-overlay" class="hidden" role="alert" aria-live="assertive">
     <div class="spinner-box">
