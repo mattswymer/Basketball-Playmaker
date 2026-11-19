@@ -9,8 +9,8 @@ class PlaymakerApp {
   this.config = {
       canvas: { width: 1512, height: 900 },
       player: {
-        radius: 15,
-        ballIndicatorOffset: 5,
+        radius: 28.35,
+        ballIndicatorOffset: 9.45,
         colors: {
           offense: '#007bff',
           defense: '#dc3545',
@@ -262,7 +262,7 @@ async safeOperation(operation, errorMessage) {
       this.autosaveTimer = null;
       try {
         const backup = {
-          formatVersion: 1,
+          formatVersion: 2,
           playName: this.dom.playNameInput.value || '',
           courtType: this.state.courtType,
           frames: this.state.frames,
@@ -732,7 +732,7 @@ async safeOperation(operation, errorMessage) {
     this.ctx.stroke();
 
     this.ctx.fillStyle = 'white';
-    this.ctx.font = 'bold 14px Arial';
+    this.ctx.font = 'bold 24px Arial';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText(player.label, x, y);
@@ -2149,7 +2149,7 @@ shouldSaveState() {
     const playName = this.dom.playNameInput.value.trim() || 'Untitled Play';
     const filename = playName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.json';
     const saveData = {
-      formatVersion: 1,
+      formatVersion: 2,
       playName,
       courtType: this.state.courtType,
       frames: this.state.frames,
