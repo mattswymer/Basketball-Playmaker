@@ -5,6 +5,7 @@ A browser-based basketball play diagramming and animation tool for coaches and p
 ## What it does
 
 - **Court diagrams:** Work on self-contained NFHS court diagrams drawn at a 1.5 px/in master scale (1512 × 900 px for a full 84 × 50 ft court). Court lines are 3 px wide, with the key, lane marks, backboard, rim, restricted area, free-throw circle, and 3-point geometry positioned from the supplied NFHS measurements. They work when opening the downloaded app directly from `file://` and remain safe for PDF and video export.
+- **Court orientation:** Half-court is displayed vertically (baseline at the top, half-court line at the bottom); full-court is displayed horizontally (baseline to baseline). The half-court uses the same 1512 × 900 NFHS master coordinate system, rotated for display, so saved player and route coordinates remain consistent.
 - **Offense and defense:** Add offensive players 1–5 and defensive players X1–X5.
 - **Basketball actions:** Draw cuts/movement, dribbles, passes, screens, and shots. Each action supports a multi-point route.
 - **Frame sequences:** Create a play one frame at a time. Player locations and ball possession carry forward when a frame is added.
