@@ -76,9 +76,11 @@ function startServer() {
 
     // PDF is generated from the bundled jsPDF library and should produce a
     // real file plus a persistent in-app download link.
+    await page.locator('#export-pdf').click();
+    await page.locator('#export-download-panel').waitFor({ state: 'visible', timeout: 20000 });
     const [pdfDownload] = await Promise.all([
       page.waitForEvent('download', { timeout: 20000 }),
-      page.locator('#export-pdf').click()
+      page.locator('#export-download-link').click()
     ]);
     assert.match(pdfDownload.suggestedFilename(), /\.pdf$/i);
     const pdfPath = await pdfDownload.path();
@@ -87,9 +89,11 @@ function startServer() {
     assert.equal(await page.locator('#export-download-link').getAttribute('download'), pdfDownload.suggestedFilename());
 
     // Canvas recording should complete and leave a visible retry/download link.
+    await page.locator('#export-video-btn').click();
+    await page.locator('#export-download-panel').waitFor({ state: 'visible', timeout: 60000 });
     const [videoDownload] = await Promise.all([
-      page.waitForEvent('download', { timeout: 60000 }),
-      page.locator('#export-video-btn').click()
+      page.waitForEvent('download', { timeout: 20000 }),
+      page.locator('#export-download-link').click()
     ]);
     assert.match(videoDownload.suggestedFilename(), /\.(webm|mp4)$/i);
     const videoPath = await videoDownload.path();
