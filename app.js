@@ -425,14 +425,15 @@ async safeOperation(operation, errorMessage) {
     this.clearExportDownload();
     this.exportDownloadUrl = URL.createObjectURL(blob);
     this.dom.exportDownloadHeading.textContent = label + ' ready';
-    this.dom.exportDownloadMessage.textContent = 'Your file is ready. Use the download link if your browser did not download it automatically.';
+    this.dom.exportDownloadMessage.textContent = 'Your file is ready. Click Download to save it to your device.';
     this.dom.exportDownloadLink.href = this.exportDownloadUrl;
     this.dom.exportDownloadLink.download = filename;
     this.dom.exportDownloadLink.textContent = 'Download ' + label;
     this.dom.exportDownloadPanel.classList.remove('hidden');
-    try { this.dom.exportDownloadLink.click(); }
-    catch (error) { console.warn('Automatic export download was blocked:', error); }
-    this.setInstruction(label + ' ready. Use the download link if it did not download automatically.');
+    // Export generation is asynchronous, so browsers commonly block a
+    // synthetic download click after the original user activation expires.
+    // Leave the visible link for an explicit, user-initiated download.
+    this.setInstruction(label + ' ready. Click the download link to save the file.');
   }
 
   loadPdfLibrary() {
@@ -696,39 +697,27 @@ async safeOperation(operation, errorMessage) {
         iconCtx.arc(20, 20, 11, 0, Math.PI * 2);
         iconCtx.fill();
         iconCtx.stroke();
+        // Familiar basketball seams, not intersecting radial arcs.
         iconCtx.beginPath();
-        iconCtx.moveTo(9, 20);
-        iconCtx.quadraticCurveTo(20, 9, 31, 20);
-        iconCtx.moveTo(9, 20);
-        iconCtx.quadraticCurveTo(20, 31, 31, 20);
         iconCtx.moveTo(20, 9);
-        iconCtx.quadraticCurveTo(11, 20, 20, 31);
+        iconCtx.bezierCurveTo(13, 14, 13, 26, 20, 31);
         iconCtx.moveTo(20, 9);
-        iconCtx.quadraticCurveTo(29, 20, 20, 31);
+        iconCtx.bezierCurveTo(27, 14, 27, 26, 20, 31);
+        iconCtx.moveTo(10, 16);
+        iconCtx.quadraticCurveTo(20, 20, 30, 16);
+        iconCtx.moveTo(10, 24);
+        iconCtx.quadraticCurveTo(20, 20, 30, 24);
         iconCtx.stroke();
         break;
       case 'delete':
         iconCtx.strokeStyle = '#b91c1c';
-        iconCtx.lineWidth = 3;
+        iconCtx.lineWidth = 4;
         iconCtx.lineCap = 'round';
-        iconCtx.lineJoin = 'round';
         iconCtx.beginPath();
-        iconCtx.moveTo(10, 12);
-        iconCtx.lineTo(30, 12);
-        iconCtx.moveTo(15, 12);
-        iconCtx.lineTo(16, 31);
-        iconCtx.lineTo(24, 31);
-        iconCtx.lineTo(25, 12);
-        iconCtx.moveTo(14, 8);
-        iconCtx.lineTo(26, 8);
-        iconCtx.moveTo(18, 8);
-        iconCtx.lineTo(18, 5);
-        iconCtx.lineTo(22, 5);
-        iconCtx.lineTo(22, 8);
-        iconCtx.moveTo(19, 17);
-        iconCtx.lineTo(19, 27);
-        iconCtx.moveTo(21, 17);
-        iconCtx.lineTo(21, 27);
+        iconCtx.moveTo(12, 12);
+        iconCtx.lineTo(28, 28);
+        iconCtx.moveTo(28, 12);
+        iconCtx.lineTo(12, 28);
         iconCtx.stroke();
         break;
     }
@@ -805,41 +794,21 @@ async safeOperation(operation, errorMessage) {
 drawDribbleLine(start, end, drawArrow = true) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
-    const totalDist = Math.sqrt(dx * dx + dy * dy);
-    if (totalDist === 0) return;
-
+    const totalDist = Math.hypot(dx, dy);
+    if (totalDist < 1) return;
     const angle = Math.atan2(dy, dx);
     const amplitude = this.config.line.dribbleAmplitude;
-    const stepLength = this.config.line.dribbleSegmentLength;
-    const stepsPerWave = this.config.line.dribbleFrequency; // Steps per 2*PI wave
-    
-    const numSteps = Math.floor(totalDist / stepLength);
-
+    const wavelength = Math.max(30, this.config.line.dribbleSegmentLength * this.config.line.dribbleFrequency);
+    const sampleSpacing = 3;
+    const normalX = -Math.sin(angle);
+    const normalY = Math.cos(angle);
     this.ctx.beginPath();
     this.ctx.moveTo(start.x, start.y);
-
-    for (let i = 1; i <= numSteps; i++) {
-      const currentDist = i * stepLength;
-      
-      // 't' is the percentage of distance traveled so far
-      const t = currentDist / totalDist;
-      const x_linear = start.x + dx * t;
-      const y_linear = start.y + dy * t;
-
-      // --- THE FIX ---
-      // The sine input is based on the step number (i), not the
-      // percentage (t). This creates a wave of constant length.
-      const sin_input = (i / stepsPerWave) * (2 * Math.PI);
-      const offset = Math.sin(sin_input) * amplitude;
-      // --- END FIX ---
-
-      const offsetX = Math.sin(angle) * offset;
-      const offsetY = -Math.cos(angle) * offset;
-
-      this.ctx.lineTo(x_linear + offsetX, y_linear + offsetY);
+    for (let distance = sampleSpacing; distance < totalDist; distance += sampleSpacing) {
+      const t = distance / totalDist;
+      const offset = Math.sin((distance / wavelength) * Math.PI * 2) * amplitude;
+      this.ctx.lineTo(start.x + dx * t + normalX * offset, start.y + dy * t + normalY * offset);
     }
-
-    // Draw the final segment to the exact end point
     this.ctx.lineTo(end.x, end.y);
     this.ctx.stroke();
     if (drawArrow) this.drawArrowhead(end, angle);
@@ -920,8 +889,8 @@ drawLines(lines, frame = null) {
           this.ctx.stroke();
 
           if (i === points.length - 2) {
-            this.drawArrowhead(end1, angle);
-            this.drawArrowhead(end2, angle);
+            // One arrowhead centered over the two parallel shot lines.
+            this.drawArrowhead(end, angle);
           }
           continue;
         }
