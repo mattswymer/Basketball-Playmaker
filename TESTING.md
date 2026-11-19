@@ -9,7 +9,7 @@ npm run check
 npm test
 ```
 
-The GitHub Actions workflow runs both commands on Node.js 20 for pushes to `main` and `improve/**`, and for pull requests targeting `main`.
+The GitHub Actions workflow runs both commands on Node.js 20 for pushes to `main` and `improve/**`, and for pull requests targeting `main`. A separate Chromium browser-smoke job runs after the unit tests and verifies that both PDF and video exports produce downloadable files.
 
 The automated suite covers:
 
