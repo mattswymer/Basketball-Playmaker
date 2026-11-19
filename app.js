@@ -7,7 +7,7 @@ class PlaymakerApp {
     // ========================================================================
 
   this.config = {
-      canvas: { width: 800, height: 600 },
+      canvas: { width: 1512, height: 900 },
       player: {
         radius: 15,
         ballIndicatorOffset: 5,
@@ -129,8 +129,8 @@ async safeOperation(operation, errorMessage) {
    * Loads images, binds events, and performs the first render.
    */
   async init() {
-    // Keep drawing coordinates in logical 800x600 units while rendering at
-    // a capped device-pixel ratio for sharper court lines on high-DPI screens.
+    // Use the NFHS master court at 1.5 pixels per inch (18 px/ft).
+    // Device-pixel ratio is applied only to the backing store for crisp lines.
     this.dom.canvas.width = Math.round(this.config.canvas.width * this.pixelRatio);
     this.dom.canvas.height = Math.round(this.config.canvas.height * this.pixelRatio);
     this.ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
@@ -172,7 +172,7 @@ async safeOperation(operation, errorMessage) {
       isDrawingLine: false,
       keyboardCursor: null,
       placementPlayerLabel: null,
-      placementCursor: { x: 400, y: 300 },
+      placementCursor: { x: 756, y: 450 },
       isDirty: false,
       pendingNoteSave: false,
       previewLine: null,
@@ -699,24 +699,10 @@ async safeOperation(operation, errorMessage) {
         drawArrow(iconCtx, { x: end.x, y: end.y + 2 }, 0);
         break;
       case 'assign-ball':
-        iconCtx.fillStyle = '#f59e0b';
-        iconCtx.strokeStyle = '#92400e';
-        iconCtx.lineWidth = 2;
-        iconCtx.beginPath();
-        iconCtx.arc(20, 20, 11, 0, Math.PI * 2);
-        iconCtx.fill();
-        iconCtx.stroke();
-        // Familiar basketball seams, not intersecting radial arcs.
-        iconCtx.beginPath();
-        iconCtx.moveTo(20, 9);
-        iconCtx.bezierCurveTo(13, 14, 13, 26, 20, 31);
-        iconCtx.moveTo(20, 9);
-        iconCtx.bezierCurveTo(27, 14, 27, 26, 20, 31);
-        iconCtx.moveTo(10, 16);
-        iconCtx.quadraticCurveTo(20, 20, 30, 16);
-        iconCtx.moveTo(10, 24);
-        iconCtx.quadraticCurveTo(20, 20, 30, 24);
-        iconCtx.stroke();
+        iconCtx.font = '28px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+        iconCtx.textAlign = 'center';
+        iconCtx.textBaseline = 'middle';
+        iconCtx.fillText('🏀', 20, 21);
         break;
       case 'delete':
         iconCtx.strokeStyle = '#b91c1c';
@@ -939,82 +925,116 @@ drawLines(lines, frame = null) {
    * Main render loop. Clears canvas, draws court, lines, and players.
    */
   drawCourtBackground(ctx, courtType, width, height) {
-    const sx = width / this.config.canvas.width;
-    const sy = height / this.config.canvas.height;
+    // NFHS court geometry: 84 ft x 50 ft at 18 px/ft (1.5 px/in).
+    // The logical canvas is exactly 1512 x 900; court lines are 3 px wide.
+    const sx = width / 1512;
+    const sy = height / 900;
     ctx.save();
     ctx.scale(sx, sy);
 
-    // Hardwood floor: warm vertical planks with subtle grain. Drawn directly
-    // into the canvas, so this background is always safe to export.
-    const floor = ctx.createLinearGradient(0, 0, 800, 600);
+    const floor = ctx.createLinearGradient(0, 0, 1512, 900);
     floor.addColorStop(0, '#b58c62');
     floor.addColorStop(0.48, '#d0ad7f');
     floor.addColorStop(1, '#a77d54');
     ctx.fillStyle = floor;
-    ctx.fillRect(0, 0, 800, 600);
-    for (let x = 0; x <= 800; x += 24) {
-      ctx.fillStyle = (x / 24) % 2 ? 'rgba(92,57,30,0.045)' : 'rgba(255,245,220,0.07)';
-      ctx.fillRect(x, 0, 12, 600);
+    ctx.fillRect(0, 0, 1512, 900);
+    for (let x = 0; x <= 1512; x += 36) {
+      ctx.fillStyle = (x / 36) % 2 ? 'rgba(92,57,30,0.045)' : 'rgba(255,245,220,0.07)';
+      ctx.fillRect(x, 0, 18, 900);
       ctx.strokeStyle = 'rgba(85,55,32,0.16)';
-      ctx.lineWidth = 0.7;
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, 600);
+      ctx.lineTo(x, 900);
       ctx.stroke();
     }
-    for (let y = 35; y < 600; y += 72) {
+    for (let y = 45; y < 900; y += 108) {
       ctx.strokeStyle = 'rgba(255,245,220,0.08)';
-      ctx.lineWidth = 0.7;
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(800, y + 3);
+      ctx.lineTo(1512, y + 3);
       ctx.stroke();
     }
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.94)';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,0.96)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
     const line = (x1, y1, x2, y2) => {
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     };
     const arc = (x, y, r, start, end, anticlockwise = false) => {
       ctx.beginPath(); ctx.arc(x, y, r, start, end, anticlockwise); ctx.stroke();
     };
+    const drawEnd = (baselineX, direction) => {
+      const rimX = baselineX + direction * 94.5;
+      const keyX = baselineX + direction * 342;
+      const freeThrowX = baselineX + direction * 340.5;
 
-    // Court perimeter.
-    ctx.strokeRect(8, 8, 784, 584);
-    if (courtType === 'full') {
-      line(8, 300, 792, 300);
-      arc(400, 300, 72, 0, Math.PI * 2);
-      // Both ends use matching keys, rims, restricted areas and three-point arcs.
-      [0, 600].forEach((baseY, index) => {
-        const inward = index === 0 ? 1 : -1;
-        const keyTop = index === 0 ? 8 : 420;
-        const keyBottom = index === 0 ? 180 : 592;
-        ctx.strokeRect(300, keyTop, 200, 172);
-        arc(400, index === 0 ? 180 : 420, 72, 0, Math.PI * 2);
-        line(360, index === 0 ? 42 : 558, 440, index === 0 ? 42 : 558);
-        arc(400, index === 0 ? 58 : 542, 26, 0, Math.PI * 2);
-        line(300, index === 0 ? 8 : 592, 500, index === 0 ? 8 : 592);
-        ctx.beginPath();
-        ctx.arc(400, index === 0 ? 58 : 542, 365,
-          index === 0 ? 0.34 : Math.PI + 0.34,
-          index === 0 ? Math.PI - 0.34 : 2 * Math.PI - 0.34);
-        ctx.stroke();
+      // Backboard face is 4 ft from the baseline; rim center is 5 ft 3 in.
+      line(baselineX + direction * 72, 396, baselineX + direction * 72, 504);
+      arc(rimX, 450, 13.5, 0, Math.PI * 2);
+      arc(rimX, 450, 72, -Math.PI / 2, Math.PI / 2);
+
+      // Lane / paint: 19 ft long x 12 ft wide.
+      ctx.strokeRect(
+        Math.min(baselineX, keyX),
+        342,
+        342,
+        216
+      );
+      // Free-throw circle; the half inside the lane is normally solid,
+      // with the outer half dashed.
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(freeThrowX, 450, 108, -Math.PI / 2, Math.PI / 2, direction < 0);
+      ctx.stroke();
+      ctx.setLineDash([9, 9]);
+      ctx.beginPath();
+      ctx.arc(freeThrowX, 450, 108, Math.PI / 2, -Math.PI / 2, direction < 0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // NFHS three-point corner lines and 19 ft 9 in arc.
+      line(baselineX, 94.5, rimX, 94.5);
+      line(baselineX, 805.5, rimX, 805.5);
+      ctx.beginPath();
+      if (direction > 0) {
+        ctx.arc(rimX, 450, 355.5, -Math.PI / 2, Math.PI / 2);
+      } else {
+        ctx.arc(rimX, 450, 355.5, Math.PI / 2, 3 * Math.PI / 2);
+      }
+      ctx.stroke();
+
+      // Lane-space hash marks, neutral block, and coach's box sideline hashes.
+      [126, 180, 234, 288].forEach((distance, index) => {
+        const x = baselineX + direction * distance;
+        line(x, 342, x, 330);
+        line(x, 558, x, 570);
+        if (index === 0) {
+          ctx.strokeRect(x - 9, 330, 18, 12);
+          ctx.strokeRect(x - 9, 558, 18, 12);
+        }
       });
+      line(baselineX + direction * 504, 0, baselineX + direction * 504, 12);
+      line(baselineX + direction * 504, 888, baselineX + direction * 504, 900);
+    };
+
+    // Boundary dimensions are measured inside-edge to inside-edge. The 3 px
+    // boundary stroke is centered on the playing-surface edge.
+    ctx.strokeRect(1.5, 1.5, 1509, 897);
+    if (courtType === 'full') {
+      line(756, 0, 756, 900);
+      arc(756, 450, 108, 0, Math.PI * 2);
+      drawEnd(0, 1);
+      drawEnd(1512, -1);
     } else {
-      // Single half court with basket on the top baseline.
-      ctx.strokeRect(300, 8, 200, 175);
-      arc(400, 183, 72, 0, Math.PI * 2);
-      line(360, 42, 440, 42);
-      arc(400, 58, 26, 0, Math.PI * 2);
-      // Restricted-area semicircle and three-point arc.
-      ctx.beginPath(); ctx.arc(400, 58, 48, 0.15, Math.PI - 0.15); ctx.stroke();
-      ctx.beginPath(); ctx.arc(400, 58, 365, 0.28, Math.PI - 0.28); ctx.stroke();
-      // Bottom edge is the half-court division.
-      line(8, 592, 792, 592);
-      arc(400, 592, 72, Math.PI, 0);
+      // Half-court mode shows the left 42 ft half, using the same exact
+      // full-court coordinate system and scale as full-court mode.
+      drawEnd(0, 1);
+      line(756, 0, 756, 900);
+      arc(756, 450, 108, -Math.PI / 2, Math.PI / 2);
     }
     ctx.restore();
   }
@@ -1237,7 +1257,7 @@ switchFrame(newFrameIndex, options = {}) {
     this.state.selectedPlayerId = null;
     this.clearPlacementSelection();
     this.state.placementPlayerLabel = label;
-    this.state.placementCursor = { x: 400, y: 300 };
+    this.state.placementCursor = { x: 756, y: 450 };
     const icon = Array.from(this.dom.playerToolIcons).find(item => item.dataset.player === label);
     if (icon) {
       icon.classList.add('selected');
