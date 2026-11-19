@@ -68,6 +68,8 @@ These checks exercise browser behavior that the Node.js unit tests do not simula
 
 ### Responsive and accessibility
 
+- [ ] Confirm the full-court master surface is 1512 × 900 logical pixels (84 × 50 ft at 18 px/ft) and standard court markings are 3 px wide.
+- [ ] Confirm half-court and full-court court markings, keys, lane ticks, backboards, rims, free-throw circles, and 3-point arcs align with NFHS dimensions.
 - [ ] Test at desktop, tablet, and phone widths. On phones, the court should appear before the horizontally scrolling frame storyboard and player palette.
 - [ ] Confirm browser zoom is available.
 - [ ] Navigate palette tokens and action-wheel buttons using Tab, Enter, and Space.
