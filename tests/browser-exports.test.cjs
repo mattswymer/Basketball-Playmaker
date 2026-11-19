@@ -74,6 +74,22 @@ function startServer() {
     await page.locator('.frame-thumbnail').nth(1).waitFor();
     await page.locator('.frame-thumbnail').first().click();
 
+    // Catch the exact production failure before export: a canvas that has
+    // drawn a non-CORS image is tainted and rejects both toDataURL and
+    // captureStream. Exercise both APIs after court artwork has loaded.
+    const canvasSecurity = await canvas.evaluate(el => {
+      try {
+        const preview = el.toDataURL('image/png');
+        const stream = el.captureStream(1);
+        stream.getTracks().forEach(track => track.stop());
+        return { clean: preview.startsWith('data:image/png'), stream: true };
+      } catch (error) {
+        return { clean: false, stream: false, error: error.message };
+      }
+    });
+    assert.equal(canvasSecurity.clean, true, 'Court canvas must remain origin-clean: ' + (canvasSecurity.error || ''));
+    assert.equal(canvasSecurity.stream, true, 'Court canvas must support captureStream: ' + (canvasSecurity.error || ''));
+
     // PDF is generated from the bundled jsPDF library and should produce a
     // real file plus a persistent in-app download link.
     await page.locator('#export-pdf').click();
