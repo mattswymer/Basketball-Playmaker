@@ -1,0 +1,10 @@
+{
+  "name": "basketball-playmaker-pro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static basketball play diagramming and animation application",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check app.js && node --check play-data.js && node --check tests/play-data.test.cjs"
+  }
+}

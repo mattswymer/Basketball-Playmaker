@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="Basketball Playmaker Pro - Professional basketball play diagramming with radial menu interface" />
   <meta name="theme-color" content="#1a1a1a" />
 
@@ -14,6 +14,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" defer></script>
 
+  <script src="play-data.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -27,6 +28,7 @@
           id="play-name"
           placeholder="Untitled Play"
           aria-label="Enter play name" />
+        <span id="save-status" class="save-status" role="status" aria-live="polite">No unsaved changes</span>
 
         <label for="court-toggle" class="visually-hidden">Court Type</label>
         <select id="court-toggle" aria-label="Select court type">
@@ -40,7 +42,7 @@
           id="new-play"
           class="btn btn-warning"
           aria-label="Create new play">
-          🆕 New Play
+          New Play
         </button>
 
         <button
@@ -49,7 +51,7 @@
           title="Undo (Ctrl+Z)"
           aria-label="Undo last action"
           disabled>
-          ↶ Undo
+          Undo
         </button>
         <button
           id="redo-btn"
@@ -57,14 +59,14 @@
           title="Redo (Ctrl+Y)"
           aria-label="Redo last undone action"
           disabled>
-          ↷ Redo
+          Redo
         </button>
 
         <button
           id="clear-frame"
           class="btn btn-danger"
           aria-label="Clear current frame">
-          🗑️ Clear Frame
+          Clear Frame
         </button>
       </div>
 
@@ -73,7 +75,7 @@
           id="animate-play"
           class="btn btn-primary"
           aria-label="Play animation">
-          ▶️ Animate
+          Animate
         </button>
       </div>
 
@@ -82,13 +84,13 @@
           id="save-play"
           class="btn btn-success"
           aria-label="Save play to file">
-          💾 Save
+          Save
         </button>
         <button
           id="load-play"
           class="btn btn-info"
           aria-label="Load play from file">
-          📂 Load
+          Load
         </button>
         <input
           type="file"
@@ -103,13 +105,13 @@
           id="export-video-btn"
           class="btn btn-info"
           aria-label="Export play as video">
-          🎬 Export Video
+          Export Video
         </button>
         <button
           id="export-pdf"
           class="btn btn-warning"
           aria-label="Export play as PDF">
-          📄 PDF
+          Export PDF
         </button>
       </div>
     </nav>
@@ -124,8 +126,8 @@
         <h3>Frames</h3>
         <div
           id="frame-list"
-          role="list"
-          aria-label="List of animation frames">
+          role="group"
+          aria-label="Select a play frame">
         </div>
 
         <div class="frame-controls">
@@ -147,25 +149,27 @@
         <textarea
           id="frame-notes"
           placeholder="Add notes for this frame..."
-          aria-label="Frame notes">
-        </textarea>
+          aria-label="Frame notes"></textarea>
       </aside>
 
-      <div id="court-container" role="main" aria-label="Basketball court canvas">
+      <div id="court-container" role="group" aria-label="Basketball court workspace">
+        <p id="court-keyboard-help" class="visually-hidden">Choose a player from the palette and tap the court, or use arrow keys to position its preview and Enter to place it. Focus the court and use arrow keys to cycle through placed players. During an action, use arrow keys to move the endpoint, Enter to add a waypoint, Shift+Enter to finish, and Escape to cancel.</p>
         <canvas
           id="play-canvas"
-          role="img"
-          aria-label="Basketball play diagram">
+          role="group"
+          tabindex="0"
+          aria-describedby="court-keyboard-help"
+          aria-label="Interactive basketball court. Select and move players, and create action paths.">
         </canvas>
 
-        <div id="action-wheel" class="hidden" role="menu" aria-label="Player actions">
-          <div class="wheel-button" id="wheel-cut" data-tool="cut" role="menuitem" aria-label="Move / Cut" title="Move / Cut (M)"></div>
-          <div class="wheel-button" id="wheel-pass" data-tool="pass" role="menuitem" aria-label="Pass" title="Pass (P)"></div>
-          <div class="wheel-button" id="wheel-screen" data-tool="screen" role="menuitem" aria-label="Screen" title="Screen (S)"></div>
-          <div class="wheel-button" id="wheel-delete" data-tool="delete" role="menuitem" aria-label="Delete Player" title="Delete (Del)"></div>
-          <div class="wheel-button" id="wheel-ball" data-tool="assign-ball" role="menuitem" aria-label="Assign Ball" title="Assign Ball (B)"></div>
-          <div class="wheel-button" id="wheel-shoot" data-tool="shoot" role="menuitem" aria-label="Shoot" title="Shoot (X)"></div>
-          <div class="wheel-button" id="wheel-dribble" data-tool="dribble" role="menuitem" aria-label="Dribble" title="Dribble (D)"></div>
+        <div id="action-wheel" class="hidden" role="group" aria-label="Player actions">
+          <button type="button" class="wheel-button" id="wheel-cut" data-tool="cut" aria-label="Move or cut" title="Move / Cut (M)"></button>
+          <button type="button" class="wheel-button" id="wheel-pass" data-tool="pass" aria-label="Pass" title="Pass (P)"></button>
+          <button type="button" class="wheel-button" id="wheel-screen" data-tool="screen" aria-label="Screen" title="Screen (S)"></button>
+          <button type="button" class="wheel-button" id="wheel-delete" data-tool="delete" aria-label="Delete player" title="Delete (Del)"></button>
+          <button type="button" class="wheel-button" id="wheel-ball" data-tool="assign-ball" aria-label="Assign or remove ball" title="Assign Ball (B)"></button>
+          <button type="button" class="wheel-button" id="wheel-shoot" data-tool="shoot" aria-label="Shoot" title="Shoot (X)"></button>
+          <button type="button" class="wheel-button" id="wheel-dribble" data-tool="dribble" aria-label="Dribble" title="Dribble (D)"></button>
         </div>
       </div>
 
@@ -179,44 +183,44 @@
           role="group"
           aria-label="Offensive players">
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="1"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 1 to court">
+            aria-label="Select or drag offensive player 1 to the court">
           </canvas>
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="2"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 2 to court">
+            aria-label="Select or drag offensive player 2 to the court">
           </canvas>
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="3"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 3 to court">
+            aria-label="Select or drag offensive player 3 to the court">
           </canvas>
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="4"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 4 to court">
+            aria-label="Select or drag offensive player 4 to the court">
           </canvas>
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="5"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag offensive player 5 to court">
+            aria-label="Select or drag offensive player 5 to the court">
           </canvas>
         </div>
 
@@ -227,63 +231,65 @@
           role="group"
           aria-label="Defensive players">
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="X1"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X1 to court">
+            aria-label="Select or drag defensive player X1 to the court">
           </canvas>
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="X2"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X2 to court">
+            aria-label="Select or drag defensive player X2 to the court">
           </canvas>
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="X3"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X3 to court">
+            aria-label="Select or drag defensive player X3 to the court">
           </canvas>
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="X4"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X4 to court">
+            aria-label="Select or drag defensive player X4 to the court">
           </canvas>
           <canvas
-            class="player-tool-icon"
+            class="player-tool-icon" aria-pressed="false"
             data-player="X5"
             draggable="true"
             tabindex="0"
             role="button"
-            aria-label="Drag defensive player X5 to court">
+            aria-label="Select or drag defensive player X5 to the court">
           </canvas>
         </div>
 
 <div class="help-section">
-          <h4>💡 Quick Tips</h4>
+          <h4>Quick Tips</h4>
           <ul>
-            <li>- Drag players to court</li>
-            <li>- Click player for actions</li>
-            <li>- Double-click to finish line</li>
-            <li>- Click line to delete it</li>
+            <li>Drag a player, or select one and tap the court</li>
+            <li>Focus the court and use arrow keys to cycle through players</li>
+            <li>Select an action from the wheel, or use its keyboard shortcut</li>
+            <li>Click to add path points; double-click to finish</li>
+            <li>Keyboard routes: arrows move, Enter adds a point, Shift+Enter finishes</li>
+            <li>Press Escape to cancel; Undo restores deleted actions</li>
           </ul>
         </div>
 
         <div id="donationLinks">
           Like this app?
-          <a href="https://www.paypal.me/mattswymer84" target="_blank" title="PayPal">
+          <a href="https://www.paypal.me/mattswymer84" target="_blank" rel="noopener noreferrer" title="PayPal">
             <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/PayPal_2024_%28Icon%29.svg/250px-PayPal_2024_%28Icon%29.svg.png" alt="PayPal" />
           </a>
-          <a href="https://venmo.com/mattswymer" target="_blank" title="Venmo">
+          <a href="https://venmo.com/mattswymer" target="_blank" rel="noopener noreferrer" title="Venmo">
             <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Venmo_logo.png/1200px-Venmo_logo.png" alt="Venmo" />
           </a>
         </div>

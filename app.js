@@ -41,14 +41,13 @@ class PlaymakerApp {
         }
       },
       // ---------------------
-      animation: { speed: 1500, fps: 30, finalFrameHold: 2000 },
+      animation: { speed: 1500, finalFrameHold: 2000 },
       interaction: {
         clickTolerance: 10,
-        doubleClickTime: 450,
-        longPressTime: 500
+        doubleClickTime: 450
       },
       history: { maxStates: 50, noteDebounceDelay: 500 },
-      video: { mimeType: 'video/webm', fps: 30 },
+      video: { fps: 30 },
       images: {
         halfCourt: 'images/halfcourt.webp',
         fullCourt: 'images/fullcourt.webp'
@@ -62,6 +61,7 @@ class PlaymakerApp {
       canvas: document.getElementById('play-canvas'),
       instructionText: document.getElementById('instruction-text'),
       playNameInput: document.getElementById('play-name'),
+      saveStatus: document.getElementById('save-status'),
       courtToggle: document.getElementById('court-toggle'),
       clearFrameBtn: document.getElementById('clear-frame'),
       saveBtn: document.getElementById('save-play'),
@@ -89,9 +89,15 @@ class PlaymakerApp {
     // APPLICATION STATE
     // ========================================================================
     this.ctx = this.dom.canvas.getContext('2d');
+    this.pixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
     this.halfCourtImg = null;
     this.fullCourtImg = null;
     this.lineIdCounter = 1;
+    this.autosaveKey = 'basketball-playmaker-autosave-v1';
+    this.autosaveTimer = null;
+    this.videoRecorder = null;
+    this.videoStream = null;
+    this.videoAnimationFrameId = null;
     this.state = this.createInitialState();
 
     // ========================================================================
@@ -115,32 +121,43 @@ async safeOperation(operation, errorMessage) {
    * Loads images, binds events, and performs the first render.
    */
   async init() {
-    this.dom.canvas.width = this.config.canvas.width;
-    this.dom.canvas.height = this.config.canvas.height;
-
-    try {
-      [this.halfCourtImg, this.fullCourtImg] = await Promise.all([
-        this.loadImage(this.config.images.halfCourt),
-        this.loadImage(this.config.images.fullCourt)
-      ]);
-    } catch (error) {
-      console.error('Image loading error:', error);
-      this.showAlert(`${error.message}. Please ensure court images are in 'images' folder.`);
-    }
+    // Keep drawing coordinates in logical 800x600 units while rendering at
+    // a capped device-pixel ratio for sharper court lines on high-DPI screens.
+    this.dom.canvas.width = Math.round(this.config.canvas.width * this.pixelRatio);
+    this.dom.canvas.height = Math.round(this.config.canvas.height * this.pixelRatio);
+    this.ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
 
     this.bindEventHandlers();
     this.initializeToolboxIcons();
     this.initializeActionWheelIcons();
+    this.dom.frameNotes.value = this.state.frames[0].notes || '';
     this.renderFrameList();
     this.draw();
-    this.setInstruction('Drag a player onto the court to begin');
+    this.setInstruction('Select a player to tap-to-place, or drag one onto the court.');
     this.updateHistoryButtons();
-    console.log('✅ Basketball Playmaker Pro (Master 4.2) initialized');
+    this.updateSaveStatus();
+    this.restoreAutosave();
+
+    // Load court artwork after the editor is interactive. Missing artwork
+    // should not prevent coaches from drawing on a blank court.
+    const imageResults = await Promise.allSettled([
+      this.loadImage(this.config.images.halfCourt),
+      this.loadImage(this.config.images.fullCourt)
+    ]);
+    if (imageResults[0].status === 'fulfilled') this.halfCourtImg = imageResults[0].value;
+    else console.error('Half-court image failed to load:', imageResults[0].reason);
+    if (imageResults[1].status === 'fulfilled') this.fullCourtImg = imageResults[1].value;
+    else console.error('Full-court image failed to load:', imageResults[1].reason);
+
+    this.renderFrameList();
+    this.draw();
+    if (imageResults.some(result => result.status === 'rejected')) {
+      this.setInstruction('Court artwork could not be loaded. You can still create and save diagrams.');
+    }
+    console.log('Basketball Playmaker Pro initialized');
   }
 
-  // ==========================================================================
-  // STATE & HISTORY
-  // ==========================================================================
+
 
   createInitialState() {
     const initialFrames = [this.createNewFrame(1)];
@@ -153,12 +170,16 @@ async safeOperation(operation, errorMessage) {
       nextPlayerId: 1,
       isDragging: false,
       draggingPlayer: null,
-      dragStartX: 0, dragStartY: 0,
+      dragStartPlayerX: 0, dragStartPlayerY: 0,
       dragOffsetX: 0, dragOffsetY: 0,
       isDrawingLine: false,
+      keyboardCursor: null,
+      placementPlayerLabel: null,
+      placementCursor: { x: 400, y: 300 },
+      isDirty: false,
+      pendingNoteSave: false,
       previewLine: null,
       lastClickTime: 0,
-      clickTimerId: null,
       selectedPlayerId: null,
       selectedLineId: null,
       hoverLineId: null,
@@ -188,8 +209,18 @@ async safeOperation(operation, errorMessage) {
     this.dom.redoBtn.disabled = this.state.historyIndex >= this.state.history.length - 1;
   }
 
-saveState() {
+  saveState() {
     if (!this.shouldSaveState()) return;
+    this.state.isDirty = true;
+    this.updateSaveStatus();
+    this.scheduleAutosave();
+    this.updateFrameThumbnail(this.state.currentFrameIndex);
+    const snapshot = this.copyFrames(this.state.frames);
+    const currentSnapshot = this.state.history[this.state.historyIndex];
+    if (currentSnapshot && JSON.stringify(currentSnapshot) === JSON.stringify(snapshot)) {
+      this.updateHistoryButtons();
+      return;
+    }
     if (this.state.historyIndex < this.state.history.length - 1) {
       this.state.history = this.state.history.slice(0, this.state.historyIndex + 1);
     }
@@ -197,32 +228,158 @@ saveState() {
       this.state.history.shift();
       this.state.historyIndex--;
     }
-    this.state.history.push(this.copyFrames(this.state.frames));
+    this.state.history.push(snapshot);
     this.state.historyIndex++;
     this.updateHistoryButtons();
   }
 
+  flushPendingNotes() {
+    if (this.state.noteDebounceTimer) {
+      clearTimeout(this.state.noteDebounceTimer);
+      this.state.noteDebounceTimer = null;
+    }
+    if (this.state.pendingNoteSave) {
+      this.state.pendingNoteSave = false;
+      this.saveState();
+    }
+  }
+
+  markDirty() {
+    this.state.isDirty = true;
+    this.updateSaveStatus();
+    this.scheduleAutosave();
+  }
+
+  updateSaveStatus() {
+    if (!this.dom.saveStatus) return;
+    const hasChanges = Boolean(this.state.isDirty);
+    this.dom.saveStatus.textContent = hasChanges ? 'Unsaved changes' : 'No unsaved changes';
+    this.dom.saveStatus.classList.toggle('is-dirty', hasChanges);
+    this.dom.saveStatus.classList.toggle('is-clean', !hasChanges);
+  }
+
+  scheduleAutosave() {
+    if (this.state.isAnimating || this.state.isExporting || !this.state.isDirty) return;
+    if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
+    this.autosaveTimer = setTimeout(() => {
+      this.autosaveTimer = null;
+      try {
+        const backup = {
+          formatVersion: 1,
+          playName: this.dom.playNameInput.value || '',
+          courtType: this.state.courtType,
+          frames: this.state.frames,
+          nextFrameId: this.state.nextFrameId,
+          nextPlayerId: this.state.nextPlayerId,
+          currentFrameIndex: this.state.currentFrameIndex,
+          savedAt: new Date().toISOString()
+        };
+        const serialized = JSON.stringify(backup);
+        if (serialized.length * 2 > PlayData.MAX_FILE_BYTES) {
+          console.warn('Local autosave skipped: the play is larger than the 5 MB recovery limit.');
+          return;
+        }
+        localStorage.setItem(this.autosaveKey, serialized);
+      } catch (error) {
+        console.warn('Local autosave could not be written:', error);
+      }
+    }, 450);
+  }
+
+  restoreAutosave() {
+    let serialized;
+    try {
+      serialized = localStorage.getItem(this.autosaveKey);
+    } catch (error) {
+      console.warn('Local autosave is unavailable in this browser context:', error);
+      return false;
+    }
+    if (!serialized) return false;
+
+    try {
+      const parsed = JSON.parse(serialized);
+      const backup = PlayData.normalizePlayData(parsed);
+      const savedAt = parsed.savedAt && !Number.isNaN(Date.parse(parsed.savedAt))
+        ? new Date(parsed.savedAt).toLocaleString()
+        : 'an earlier session';
+      const restore = confirm('A local recovery copy from ' + savedAt +
+        ' is available. Restore that unsaved play?');
+      if (!restore) {
+        localStorage.removeItem(this.autosaveKey);
+        return false;
+      }
+
+      this.state.courtType = backup.courtType;
+      this.state.frames = backup.frames;
+      this.state.nextFrameId = backup.nextFrameId;
+      this.state.nextPlayerId = backup.nextPlayerId;
+      this.lineIdCounter = Math.max(
+        0,
+        ...this.state.frames.flatMap(frame => frame.lines.map(line => line.id || 0))
+      ) + 1;
+      this.state.history = [this.copyFrames(this.state.frames)];
+      this.state.historyIndex = 0;
+      this.state.isDirty = true;
+      this.state.pendingNoteSave = false;
+      this.dom.playNameInput.value = backup.playName;
+      this.dom.courtToggle.value = this.state.courtType;
+
+      const requestedIndex = Number.isInteger(parsed.currentFrameIndex) ? parsed.currentFrameIndex : 0;
+      const frameIndex = Math.max(0, Math.min(this.state.frames.length - 1, requestedIndex));
+      this.switchFrame(frameIndex, { flushNotes: false });
+      this.updateHistoryButtons();
+      this.updateSaveStatus();
+      this.setInstruction('Recovered a local autosave. Save the play as a JSON file when ready.');
+      return true;
+    } catch (error) {
+      console.warn('The local recovery copy could not be restored:', error);
+      try { localStorage.removeItem(this.autosaveKey); } catch (removeError) {
+        console.warn('Could not remove the invalid local recovery copy:', removeError);
+      }
+      return false;
+    }
+  }
+
+  clearAutosave() {
+    if (this.autosaveTimer) {
+      clearTimeout(this.autosaveTimer);
+      this.autosaveTimer = null;
+    }
+    try {
+      localStorage.removeItem(this.autosaveKey);
+    } catch (error) {
+      console.warn('The local recovery copy could not be cleared:', error);
+    }
+  }
+
   undo = () => {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    this.flushPendingNotes();
     if (this.state.historyIndex > 0) {
       this.state.historyIndex--;
       this.state.frames = this.copyFrames(this.state.history[this.state.historyIndex]);
-      this.switchFrame(this.state.currentFrameIndex);
+      this.state.isDirty = true;
+      this.updateSaveStatus();
+      this.scheduleAutosave();
+      this.switchFrame(this.state.currentFrameIndex, { flushNotes: false });
       this.updateHistoryButtons();
     }
   }
 
   redo = () => {
+    if (this.state.isAnimating || this.state.isExporting) return;
+    this.flushPendingNotes();
     if (this.state.historyIndex < this.state.history.length - 1) {
       this.state.historyIndex++;
       this.state.frames = this.copyFrames(this.state.history[this.state.historyIndex]);
-      this.switchFrame(this.state.currentFrameIndex);
+      this.state.isDirty = true;
+      this.updateSaveStatus();
+      this.switchFrame(this.state.currentFrameIndex, { flushNotes: false });
       this.updateHistoryButtons();
     }
   }
 
-  // ==========================================================================
-  // UI & FEEDBACK
-  // ==========================================================================
+
 
   showAlert(message) {
     this.dom.loadingText.textContent = message;
@@ -250,36 +407,103 @@ saveState() {
   renderFrameList() {
     this.dom.frameList.innerHTML = '';
     this.state.frames.forEach((frame, index) => {
-      const frameEl = document.createElement('div');
+      const frameEl = document.createElement('button');
+      frameEl.type = 'button';
       frameEl.className = 'frame-thumbnail';
-      const label = document.createElement('div');
+      frameEl.dataset.frameId = frame.id;
+      const activeIndex = this.state.isAnimating ? this.state.currentFramePlaying : this.state.currentFrameIndex;
+      frameEl.setAttribute('aria-pressed', String(index === activeIndex));
+      frameEl.setAttribute('aria-label',
+        `Frame ${index + 1}: ${frame.players.length} players, ${frame.lines.length} actions${frame.notes ? ', has notes' : ''}`
+      );
+      const preview = document.createElement('canvas');
+      preview.className = 'frame-preview';
+      preview.width = 132;
+      preview.height = 92;
+      preview.setAttribute('aria-hidden', 'true');
+      this.drawFrameThumbnail(preview, frame);
+      frameEl.appendChild(preview);
+      const label = document.createElement('span');
       label.className = 'frame-thumbnail-label';
       label.textContent = `Frame ${index + 1}`;
       frameEl.appendChild(label);
-      frameEl.dataset.frameId = frame.id;
-
+      const meta = document.createElement('span');
+      meta.className = 'frame-thumbnail-meta';
+      meta.textContent = `${frame.players.length} players · ${frame.lines.length} actions${frame.notes ? ' · Notes' : ''}`;
+      frameEl.appendChild(meta);
       if (index === this.state.currentFrameIndex && !this.state.isAnimating) frameEl.classList.add('active');
       if (index === this.state.currentFramePlaying && this.state.isAnimating) frameEl.classList.add('active');
-
       this.dom.frameList.appendChild(frameEl);
     });
   }
 
+  drawFrameThumbnail(canvas, frame) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const sx = canvas.width / this.config.canvas.width;
+    const sy = canvas.height / this.config.canvas.height;
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const court = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
+    if (court && court.complete) ctx.drawImage(court, 0, 0, canvas.width, canvas.height);
+    frame.lines.forEach(line => {
+      if (!Array.isArray(line.points) || line.points.length < 2) return;
+      ctx.save();
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash(line.type === 'pass' ? [3, 2] : []);
+      ctx.beginPath();
+      ctx.moveTo(line.points[0].x * sx, line.points[0].y * sy);
+      line.points.slice(1).forEach(point => ctx.lineTo(point.x * sx, point.y * sy));
+      ctx.stroke();
+      ctx.restore();
+    });
+    frame.players.forEach(player => {
+      const x = player.x * sx, y = player.y * sy;
+      const radius = Math.max(3.2, player.radius * sx);
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = player.isOffense ? this.config.player.colors.offense : this.config.player.colors.defense;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+      if (player.hasBall) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 1.5, 0, Math.PI * 2);
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    });
+  }
+
+
+
   updateFrameThumbnail(frameIndex) {
     if (frameIndex < 0 || frameIndex >= this.dom.frameList.children.length) return;
-    
+    const frame = this.state.frames[frameIndex];
     const frameEl = this.dom.frameList.children[frameIndex];
-    if (frameEl) {
-      frameEl.className = 'frame-thumbnail'; // Reset class list
-      
-      // Add 'active' class only if it matches the correct state
-      if (frameIndex === this.state.currentFrameIndex && !this.state.isAnimating) {
-        frameEl.classList.add('active');
-      }
-      if (frameIndex === this.state.currentFramePlaying && this.state.isAnimating) {
-        frameEl.classList.add('active');
-      }
+    if (!frame || !frameEl) return;
+
+    const preview = frameEl.querySelector('.frame-preview');
+    if (preview) this.drawFrameThumbnail(preview, frame);
+
+    const meta = frameEl.querySelector('.frame-thumbnail-meta');
+    if (meta) {
+      meta.textContent = frame.players.length + ' players · ' + frame.lines.length +
+        ' actions' + (frame.notes ? ' · Notes' : '');
     }
+
+    frameEl.setAttribute('aria-label',
+      'Frame ' + (frameIndex + 1) + ': ' + frame.players.length + ' players, ' +
+      frame.lines.length + ' actions' + (frame.notes ? ', has notes' : '')
+    );
+    const activeIndex = this.state.isAnimating
+      ? this.state.currentFramePlaying
+      : this.state.currentFrameIndex;
+    frameEl.setAttribute('aria-pressed', String(frameIndex === activeIndex));
+    frameEl.classList.toggle('active', frameIndex === activeIndex);
   }
 
   // ==========================================================================
@@ -422,12 +646,47 @@ saveState() {
         drawArrow(iconCtx, { x: end.x, y: end.y + 2 }, 0);
         break;
       case 'assign-ball':
-        button.innerHTML = '🏀';
-        button.style.fontSize = '1.5rem';
+        iconCtx.fillStyle = '#f59e0b';
+        iconCtx.strokeStyle = '#92400e';
+        iconCtx.lineWidth = 2;
+        iconCtx.beginPath();
+        iconCtx.arc(20, 20, 11, 0, Math.PI * 2);
+        iconCtx.fill();
+        iconCtx.stroke();
+        iconCtx.beginPath();
+        iconCtx.moveTo(9, 20);
+        iconCtx.quadraticCurveTo(20, 9, 31, 20);
+        iconCtx.moveTo(9, 20);
+        iconCtx.quadraticCurveTo(20, 31, 31, 20);
+        iconCtx.moveTo(20, 9);
+        iconCtx.quadraticCurveTo(11, 20, 20, 31);
+        iconCtx.moveTo(20, 9);
+        iconCtx.quadraticCurveTo(29, 20, 20, 31);
+        iconCtx.stroke();
         break;
       case 'delete':
-        button.innerHTML = '🗑️';
-        button.style.fontSize = '1.5rem';
+        iconCtx.strokeStyle = '#b91c1c';
+        iconCtx.lineWidth = 3;
+        iconCtx.lineCap = 'round';
+        iconCtx.lineJoin = 'round';
+        iconCtx.beginPath();
+        iconCtx.moveTo(10, 12);
+        iconCtx.lineTo(30, 12);
+        iconCtx.moveTo(15, 12);
+        iconCtx.lineTo(16, 31);
+        iconCtx.lineTo(24, 31);
+        iconCtx.lineTo(25, 12);
+        iconCtx.moveTo(14, 8);
+        iconCtx.lineTo(26, 8);
+        iconCtx.moveTo(18, 8);
+        iconCtx.lineTo(18, 5);
+        iconCtx.lineTo(22, 5);
+        iconCtx.lineTo(22, 8);
+        iconCtx.moveTo(19, 17);
+        iconCtx.lineTo(19, 27);
+        iconCtx.moveTo(21, 17);
+        iconCtx.lineTo(21, 27);
+        iconCtx.stroke();
         break;
     }
   }
@@ -500,7 +759,7 @@ saveState() {
     this.ctx.stroke();
   }
 
-drawDribbleLine(start, end) {
+drawDribbleLine(start, end, drawArrow = true) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const totalDist = Math.sqrt(dx * dx + dy * dy);
@@ -540,7 +799,7 @@ drawDribbleLine(start, end) {
     // Draw the final segment to the exact end point
     this.ctx.lineTo(end.x, end.y);
     this.ctx.stroke();
-    this.drawArrowhead(end, angle);
+    if (drawArrow) this.drawArrowhead(end, angle);
   }
 
 // --- IN CONSTRUCTOR ---
@@ -553,10 +812,10 @@ drawDribbleLine(start, end) {
   // ----------------------
 
 
-drawLines(lines) {
-    const currentFrame = this.state.frames[this.state.currentFrameIndex];
-    if (!currentFrame) return;
-    const playerMap = new Map(currentFrame.players.map(p => [p.id, p]));
+drawLines(lines, frame = null) {
+    const sourceFrame = frame || this.state.frames[this.state.currentFrameIndex];
+    if (!sourceFrame) return;
+    const playerMap = new Map(sourceFrame.players.map(p => [p.id, p]));
 
     lines.forEach(line => {
       const { type, points, endPlayerId, id } = line;
@@ -617,8 +876,10 @@ drawLines(lines) {
           this.ctx.lineTo(end2.x, end2.y);
           this.ctx.stroke();
 
-          this.drawArrowhead(end1, angle);
-          this.drawArrowhead(end2, angle);
+          if (i === points.length - 2) {
+            this.drawArrowhead(end1, angle);
+            this.drawArrowhead(end2, angle);
+          }
           continue;
         }
 
@@ -626,7 +887,7 @@ drawLines(lines) {
         else this.ctx.setLineDash([]);
 
         if (type === 'dribble') {
-          this.drawDribbleLine(start, end);
+          this.drawDribbleLine(start, end, i === points.length - 2);
         } else {
           this.ctx.beginPath();
           this.ctx.moveTo(start.x, start.y);
@@ -666,6 +927,38 @@ drawLines(lines) {
       this.drawLines([this.state.previewLine]);
     }
     this.drawPlayers(currentFrame.players);
+    this.drawSelectedPlayerIndicator(currentFrame);
+    this.drawPlacementCursor();
+  }
+
+  drawSelectedPlayerIndicator(frame) {
+    const player = frame.players.find(item => item.id === this.state.selectedPlayerId);
+    if (!player) return;
+    this.ctx.save();
+    this.ctx.strokeStyle = '#d97706';
+    this.ctx.lineWidth = 3;
+    this.ctx.setLineDash([4, 3]);
+    this.ctx.beginPath();
+    this.ctx.arc(player.x, player.y, player.radius + 6, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
+  drawPlacementCursor() {
+    const label = this.state.placementPlayerLabel;
+    if (!label) return;
+    const { x, y } = this.state.placementCursor;
+    this.ctx.save();
+    this.ctx.setLineDash([5, 4]);
+    this.ctx.strokeStyle = '#d97706';
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, this.config.player.radius + 5, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.setLineDash([]);
+    this.ctx.globalAlpha = 0.75;
+    this.drawPlayerAt({ radius: this.config.player.radius, isOffense: !label.startsWith('X'), label }, x, y, false);
+    this.ctx.restore();
   }
 
   /**
@@ -680,7 +973,7 @@ drawLines(lines) {
     const courtImg = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
     if (courtImg && courtImg.complete) this.ctx.drawImage(courtImg, 0, 0, this.config.canvas.width, this.config.canvas.height);
 
-    this.drawLines(frame.lines);
+    this.drawLines(frame.lines, frame);
 
     const moveLines = new Map();
     const passLines = new Map();
@@ -738,53 +1031,60 @@ drawLines(lines) {
   // CORE LOGIC & ACTIONS
   // ==========================================================================
 
-switchFrame(newFrameIndex) {
+switchFrame(newFrameIndex, options = {}) {
+    if (options.flushNotes !== false) this.flushPendingNotes();
+    this.cancelPlayerDrag();
+    this.cancelDrawingInteraction();
+    this.clearPlacementSelection();
+    this.hideActionWheelImmediate();
+    this.state.selectedPlayerId = null;
     if (newFrameIndex < 0 || newFrameIndex >= this.state.frames.length) {
       newFrameIndex = Math.max(0, this.state.frames.length - 1);
     }
     this.state.currentFrameIndex = newFrameIndex;
-
     if (this.state.frames.length > 0 && this.state.frames[newFrameIndex]) {
-      this.renderFrameList(); // <<< THIS IS THE FIX
+      this.renderFrameList();
       this.draw();
-      this.dom.frameNotes.value = this.state.frames[newFrameIndex].notes;
+      this.dom.frameNotes.value = this.state.frames[newFrameIndex].notes || '';
     } else {
       this.handleNewPlay(false);
     }
   }
 
+
+
   showActionWheel(player, viewportX, viewportY) {
     this.state.selectedPlayerId = player.id;
     const courtRect = this.dom.courtContainer.getBoundingClientRect();
     const canvasRect = this.dom.canvas.getBoundingClientRect();
-
     const scaleX = canvasRect.width / this.config.canvas.width;
     const scaleY = canvasRect.height / this.config.canvas.height;
-
-    const canvasLeftInContainer = canvasRect.left - courtRect.left;
-    const canvasTopInContainer = canvasRect.top - courtRect.top;
-
-    const playerX_css = player.x * scaleX;
-    const playerY_css = player.y * scaleY;
-
-    const playerXInContainer = canvasLeftInContainer + playerX_css;
-    const playerYInContainer = canvasTopInContainer + playerY_css;
-
+    const canvasLeft = canvasRect.left - courtRect.left;
+    const canvasTop = canvasRect.top - courtRect.top;
+    const playerX = canvasLeft + player.x * scaleX;
+    const playerY = canvasTop + player.y * scaleY;
     this.dom.actionWheel.classList.remove('hidden');
     this.dom.actionWheel.classList.add('visible');
-    const wheelWidth = this.dom.actionWheel.offsetWidth;
-    const wheelHeight = this.dom.actionWheel.offsetHeight;
-    const x = playerXInContainer - (wheelWidth / 2);
-    const y = playerYInContainer - (wheelHeight / 2);
-
-    this.dom.actionWheel.style.left = `${x}px`;
-    this.dom.actionWheel.style.top = `${y}px`;
-    this.setInstruction('Select an action from the wheel • Drag to move; release to re‑open actions');
+    const width = this.dom.actionWheel.offsetWidth;
+    const height = this.dom.actionWheel.offsetHeight;
+    const safe = 8;
+    const maxX = Math.max(safe, courtRect.width - width - safe);
+    const maxY = Math.max(safe, courtRect.height - height - safe);
+    const x = Math.max(safe, Math.min(maxX, playerX - width / 2));
+    const y = Math.max(safe, Math.min(maxY, playerY - height / 2));
+    this.dom.actionWheel.style.left = x + 'px';
+    this.dom.actionWheel.style.top = y + 'px';
+    this.dom.canvas.focus();
+    this.draw();
+    this.setInstruction('Choose an action. Drag to move, or use the keyboard shortcuts.');
   }
+
+
 
   hideActionWheel() {
     this.state.selectedPlayerId = null;
     this.dom.actionWheel.classList.remove('visible');
+    this.draw();
     setTimeout(() => {
       if (!this.dom.actionWheel.classList.contains('visible')) {
         this.dom.actionWheel.classList.add('hidden');
@@ -797,6 +1097,78 @@ switchFrame(newFrameIndex) {
     this.dom.actionWheel.classList.add('hidden');
   }
 
+  cancelDrawingInteraction(message = '') {
+    this.state.lastClickTime = 0;
+    this.state.isDrawingLine = false;
+    this.state.keyboardCursor = null;
+    this.state.previewLine = null;
+    this.state.activeLineTool = null;
+    this.dom.canvas.classList.remove('drawing-line');
+    if (message) this.setInstruction(message);
+  }
+
+  cancelPlayerDrag() {
+    if (!this.state.isDragging) return;
+    const player = this.state.draggingPlayer;
+    if (player) {
+      player.x = this.state.dragStartPlayerX;
+      player.y = this.state.dragStartPlayerY;
+    }
+    this.state.isDragging = false;
+    this.state.draggingPlayer = null;
+    document.removeEventListener('mousemove', this.onDocumentMouseMove);
+    document.removeEventListener('mouseup', this.onDocumentMouseUp);
+    this.scheduleDraw();
+  }
+
+  clearPlacementSelection() {
+    this.state.placementPlayerLabel = null;
+    this.dom.playerToolIcons.forEach(icon => {
+      icon.classList.remove('selected');
+      icon.setAttribute('aria-pressed', 'false');
+    });
+  }
+
+  selectPlacementPlayer(label) {
+    if (!/^(?:[1-5]|X[1-5])$/.test(label) || this.state.isAnimating || this.state.isExporting) return;
+    this.cancelPlayerDrag();
+    this.cancelDrawingInteraction();
+    this.hideActionWheelImmediate();
+    this.state.selectedPlayerId = null;
+    this.clearPlacementSelection();
+    this.state.placementPlayerLabel = label;
+    this.state.placementCursor = { x: 400, y: 300 };
+    const icon = Array.from(this.dom.playerToolIcons).find(item => item.dataset.player === label);
+    if (icon) {
+      icon.classList.add('selected');
+      icon.setAttribute('aria-pressed', 'true');
+    }
+    this.dom.canvas.focus();
+    this.draw();
+    this.setInstruction('Player ' + label + ' selected. Tap the court to place, or use arrow keys and Enter.');
+  }
+
+  handlePlayerPaletteClick = (e) => {
+    this.selectPlacementPlayer(e.currentTarget.dataset.player);
+  }
+
+  placeSelectedPlayerAt(x, y, viewportX = null, viewportY = null) {
+    const label = this.state.placementPlayerLabel;
+    if (!label) return false;
+    const player = this.createPlayerAt(x, y, label);
+    if (!player) return false;
+    this.clearPlacementSelection();
+    this.draw();
+    this.saveState();
+    if (viewportX === null || viewportY === null) {
+      const rect = this.dom.canvas.getBoundingClientRect();
+      viewportX = rect.left + player.x * (rect.width / this.config.canvas.width);
+      viewportY = rect.top + player.y * (rect.height / this.config.canvas.height);
+    }
+    this.showActionWheel(player, viewportX, viewportY);
+    return true;
+  }
+
   /**
    * Creates a new player on the current frame at the specified coordinates.
    * @param {number} x - The canvas x-coordinate.
@@ -806,7 +1178,7 @@ switchFrame(newFrameIndex) {
    */
   createPlayerAt(x, y, playerLabel) {
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
-    if (!currentFrame) return null;
+    if (!currentFrame || !/^(?:[1-5]|X[1-5])$/.test(playerLabel)) return null;
 
     const playerExists = currentFrame.players.some(p => p.label === playerLabel);
     if (playerExists) {
@@ -814,12 +1186,13 @@ switchFrame(newFrameIndex) {
       return null;
     }
 
+    const position = this.clampCourtPoint(x, y, this.config.player.radius);
     const newPlayer = {
       id: this.state.nextPlayerId++,
       label: playerLabel,
       isOffense: !playerLabel.startsWith('X'),
-      x: x,
-      y: y,
+      x: position.x,
+      y: position.y,
       radius: this.config.player.radius,
       hasBall: false
     };
@@ -830,26 +1203,34 @@ switchFrame(newFrameIndex) {
 
   addWaypoint(x, y) {
     const playerAtWaypoint = this.getPlayerAtCoord(x, y);
-    const newPoint = playerAtWaypoint ? { x: playerAtWaypoint.x, y: playerAtWaypoint.y } : { x, y };
+    const newPoint = playerAtWaypoint
+      ? { x: playerAtWaypoint.x, y: playerAtWaypoint.y }
+      : this.clampCourtPoint(x, y);
 
     this.state.previewLine.points.splice(this.state.previewLine.points.length - 1, 0, newPoint);
+    this.state.keyboardCursor = { x: newPoint.x, y: newPoint.y };
     this.draw();
   }
 
   finalizePreviewLine(x, y) {
     this.state.isDrawingLine = false;
     const finalLine = this.state.previewLine;
+    if (!finalLine || !Array.isArray(finalLine.points)) {
+      this.cancelDrawingInteraction();
+      this.draw();
+      return;
+    }
     finalLine.points.pop();
 
     const playerAtEnd = this.getPlayerAtCoord(x, y);
-    const finalPoint = playerAtEnd ? { x: playerAtEnd.x, y: playerAtEnd.y } : { x, y };
+    const finalPoint = playerAtEnd
+      ? { x: playerAtEnd.x, y: playerAtEnd.y }
+      : this.clampCourtPoint(x, y);
 
     if (finalLine.points.length > 1) {
       const lastWaypoint = finalLine.points[finalLine.points.length - 1];
       const dist = Math.hypot(finalPoint.x - lastWaypoint.x, finalPoint.y - lastWaypoint.y);
-      if (dist < this.config.interaction.clickTolerance) {
-        finalLine.points.pop();
-      }
+      if (dist < this.config.interaction.clickTolerance) finalLine.points.pop();
     }
 
     if (playerAtEnd) {
@@ -859,14 +1240,25 @@ switchFrame(newFrameIndex) {
       finalLine.points.push(finalPoint);
     }
 
-    if (finalLine.points.length >= 2) {
-      this.state.frames[this.state.currentFrameIndex].lines.push(finalLine);
+    const pathLength = this.getPathLength(finalLine.points);
+    let committed = false;
+    if (finalLine.points.length >= 2 && pathLength > 1) {
+      const frame = this.state.frames[this.state.currentFrameIndex];
+      frame.lines = frame.lines.filter(line => line.startPlayerId !== finalLine.startPlayerId);
+      frame.lines.push(finalLine);
+      committed = true;
     }
+
     this.state.previewLine = null;
+    this.state.keyboardCursor = null;
     this.dom.canvas.classList.remove('drawing-line');
-    this.setInstruction('Line created! Click a player to add another action.');
     this.draw();
-    this.saveState();
+    if (committed) {
+      this.setInstruction('Action created. Select a player to add another action.');
+      this.saveState();
+    } else {
+      this.setInstruction('Action cancelled. Choose a destination farther from the starting point.');
+    }
   }
 
 stopAnimation() {
@@ -877,17 +1269,24 @@ stopAnimation() {
       }
       this.state.isAnimating = false;
       this.state.animationStartTime = 0;
-      this.state.currentFramePlaying = 0; // ADD THIS
-      this.dom.animateBtn.textContent = '▶️ Animate';
+      this.state.currentFramePlaying = 0;
+      this.dom.animateBtn.textContent = 'Animate';
       this.dom.animateBtn.classList.remove('btn-danger');
       this.dom.animateBtn.classList.add('btn-primary');
       this.renderFrameList();
+      this.draw();
     }
   }
 
-  // ==========================================================================
-  // UTILITIES (Geometry, Hit-Testing, Animation)
-  // ==========================================================================
+
+
+  clampCourtPoint(x, y, radius = 0) {
+    const safeRadius = Math.max(0, Math.min(radius, this.config.canvas.width / 2, this.config.canvas.height / 2));
+    return {
+      x: Math.max(safeRadius, Math.min(this.config.canvas.width - safeRadius, x)),
+      y: Math.max(safeRadius, Math.min(this.config.canvas.height - safeRadius, y))
+    };
+  }
 
   getMousePos(e) {
     const rect = this.dom.canvas.getBoundingClientRect();
@@ -973,10 +1372,6 @@ shouldSaveState() {
     return !this.state.isAnimating && !this.state.isExporting;
   }
 
-  isDragSignificant(x, y) {
-    const dist = Math.hypot(x - this.state.dragStartX, y - this.state.dragStartY);
-    return dist >= this.config.interaction.clickTolerance;
-  }
   // ==========================================================================
   // EVENT HANDLER METHODS
   // [REFACTOR] Converted to arrow functions to auto-bind `this`.
@@ -1000,9 +1395,16 @@ shouldSaveState() {
     document.addEventListener('keydown', this.handleKeyDown);
 
     this.dom.courtToggle.addEventListener('change', (e) => {
+      if (this.state.isAnimating || this.state.isExporting) {
+        e.target.value = this.state.courtType;
+        return;
+      }
       this.state.courtType = e.target.value;
+      this.markDirty();
+      this.renderFrameList();
       this.draw();
     });
+    this.dom.playNameInput.addEventListener('input', () => this.markDirty());
 
     this.dom.frameList.addEventListener('click', this.handleFrameListClick);
     this.dom.frameNotes.addEventListener('input', this.handleNotesInput);
@@ -1041,71 +1443,58 @@ shouldSaveState() {
     this.dom.playerToolIcons.forEach(icon => {
       icon.addEventListener('dragstart', this.handlePlayerDragStart);
       icon.addEventListener('dragend', this.handlePlayerDragEnd);
+      icon.addEventListener('click', this.handlePlayerPaletteClick);
+      icon.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          event.stopPropagation();
+          this.selectPlacementPlayer(icon.dataset.player);
+        }
+      });
     });
   }
 
   handleNewPlay = (confirmFirst = true) => {
-    if (confirmFirst && this.state.frames.some(f => f.players.length > 0 || f.lines.length > 0)) {
-      if (!confirm('Start new play? All unsaved progress will be lost.')) {
-        return;
-      }
-    }
-    if (this.state.isAnimating && this.state.animationFrameId) {
-      cancelAnimationFrame(this.state.animationFrameId);
-    }
+    if (this.state.isExporting) return;
+    this.flushPendingNotes();
+    if (confirmFirst && this.state.isDirty &&
+        !confirm('Start a new play? Unsaved changes, including notes, will be lost.')) return;
+    this.clearAutosave();
+    if (this.state.isAnimating) this.stopAnimation();
+    this.cancelPlayerDrag();
+    this.cancelDrawingInteraction();
+    this.clearPlacementSelection();
+    this.hideActionWheelImmediate();
     this.state = this.createInitialState();
     this.lineIdCounter = 1;
     this.dom.playNameInput.value = '';
     this.dom.courtToggle.value = 'half';
+    this.updateSaveStatus();
     this.renderFrameList();
-    this.switchFrame(0);
-    this.setInstruction('Drag a player onto the court to begin');
+    this.switchFrame(0, { flushNotes: false });
+    this.setInstruction('Select a player to tap-to-place, or drag one onto the court.');
     this.updateHistoryButtons();
   }
 
+
+
   handleAddFrame = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
+    this.flushPendingNotes();
+    this.cancelPlayerDrag();
+    this.cancelDrawingInteraction();
+    this.clearPlacementSelection();
+
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return;
 
-    const newFrame = this.createNewFrame(this.state.nextFrameId++);
-    newFrame.players = JSON.parse(JSON.stringify(currentFrame.players));
-
-    let ballWasPassedOrShot = false;
-    let passerOrShooter = null;
-
-    currentFrame.lines.forEach(line => {
-      if (line.points.length < 2 || !line.startPlayerId) return;
-      const endPoint = line.points[line.points.length - 1];
-      const startPlayer = newFrame.players.find(p => p.id === line.startPlayerId);
-      if (!startPlayer) return;
-
-      if (['cut', 'move', 'dribble', 'screen'].includes(line.type)) {
-        startPlayer.x = endPoint.x;
-        startPlayer.y = endPoint.y;
-      }
-      if (line.type === 'pass') {
-        const endPlayer = newFrame.players.find(p => p.id === line.endPlayerId);
-        if (endPlayer) {
-          endPlayer.hasBall = true;
-          ballWasPassedOrShot = true;
-          passerOrShooter = startPlayer;
-        }
-      }
-      if (line.type === 'shoot') {
-        ballWasPassedOrShot = true;
-        passerOrShooter = startPlayer;
-      }
-    });
-
-    if (ballWasPassedOrShot && passerOrShooter) {
-      passerOrShooter.hasBall = false;
-    }
-
+    const newFrame = PlayData.createNextFrame(currentFrame, this.state.nextFrameId++);
     this.state.frames.push(newFrame);
-    this.switchFrame(this.state.frames.length - 1);
+    this.switchFrame(this.state.frames.length - 1, { flushNotes: false });
     this.saveState();
   }
+
+
 
   handleDeleteFrame = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
@@ -1115,17 +1504,31 @@ shouldSaveState() {
     }
     if (!confirm('Delete this frame?')) return;
 
+    this.flushPendingNotes();
+    this.cancelPlayerDrag();
+    this.cancelDrawingInteraction();
+    this.clearPlacementSelection();
+    this.hideActionWheelImmediate();
     const deletedFrameIndex = this.state.currentFrameIndex;
     this.state.frames.splice(deletedFrameIndex, 1);
     const newIndex = Math.max(0, deletedFrameIndex - 1);
-    this.switchFrame(newIndex);
+    this.switchFrame(newIndex, { flushNotes: false });
     this.saveState();
   }
 
+
+
   handleClearFrame = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
-    if (!confirm('Clear all players and lines from this frame?')) return;
+    if (!confirm('Clear all players, action lines, and notes from this frame?')) return;
 
+    this.flushPendingNotes();
+    this.cancelPlayerDrag();
+    this.cancelDrawingInteraction();
+    this.clearPlacementSelection();
+    this.hideActionWheelImmediate();
+    this.state.selectedPlayerId = null;
+    this.state.selectedLineId = null;
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (currentFrame) {
       currentFrame.players = [];
@@ -1133,9 +1536,13 @@ shouldSaveState() {
       currentFrame.notes = '';
       this.dom.frameNotes.value = '';
     }
+    this.state.pendingNoteSave = false;
     this.draw();
     this.saveState();
+    this.setInstruction('Frame cleared');
   }
+
+
 
   handleWheelClick = (e) => {
     const button = e.target.closest('.wheel-button');
@@ -1145,7 +1552,9 @@ shouldSaveState() {
   }
 
   handleWheelAction(tool) {
+    if (this.state.isAnimating || this.state.isExporting) return;
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
+    if (!currentFrame) return;
     const player = currentFrame.players.find(p => p.id === this.state.selectedPlayerId);
     if (!player) return;
 
@@ -1164,16 +1573,12 @@ shouldSaveState() {
     }
 
     if (tool === 'assign-ball') {
-      if (player.isOffense) {
-        const currentBallHolder = currentFrame.players.find(p => p.hasBall);
-        if (currentBallHolder && currentBallHolder !== player) currentBallHolder.hasBall = false;
-        player.hasBall = !player.hasBall;
-        this.draw();
-        this.saveState();
-        this.setInstruction(player.hasBall ? 'Ball assigned' : 'Ball removed');
-      } else {
-        this.setInstruction('Only offensive players can have the ball');
-      }
+      const shouldAssign = !player.hasBall;
+      currentFrame.players.forEach(currentPlayer => { currentPlayer.hasBall = false; });
+      player.hasBall = shouldAssign;
+      this.draw();
+      this.saveState();
+      this.setInstruction(player.hasBall ? 'Ball assigned' : 'Ball removed');
       return;
     }
 
@@ -1182,23 +1587,24 @@ shouldSaveState() {
       return;
     }
 
-    currentFrame.lines = currentFrame.lines.filter(l => l.startPlayerId !== player.id);
+    this.cancelDrawingInteraction();
     this.state.isDrawingLine = true;
     this.state.activeLineTool = tool;
+    this.state.keyboardCursor = { x: player.x, y: player.y };
     this.state.previewLine = {
       id: this.lineIdCounter++,
       type: tool,
       startPlayerId: player.id,
       points: [{ x: player.x, y: player.y }, { x: player.x, y: player.y }]
     };
-    this.setInstruction(`Drawing ${tool}. Single‑click to add waypoints, double‑click to finish.`);
+    this.dom.canvas.focus();
+    this.setInstruction(`Drawing ${tool}. Click to add points, double-click to finish. Keyboard: arrows to move, Enter for a point, Shift+Enter to finish, Escape to cancel.`);
     this.dom.canvas.classList.add('drawing-line');
     this.draw();
   }
 
   handleFrameListClick = (e) => {
     if (this.state.isAnimating || this.state.isExporting) return;
-    this.hideActionWheel();
     const clickedFrame = e.target.closest('.frame-thumbnail');
     if (!clickedFrame) return;
     const frameId = parseInt(clickedFrame.dataset.frameId, 10);
@@ -1208,41 +1614,144 @@ shouldSaveState() {
 
   handleNotesInput = () => {
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
-    if (currentFrame) {
-      currentFrame.notes = this.dom.frameNotes.value;
-      clearTimeout(this.state.noteDebounceTimer);
-      this.state.noteDebounceTimer = setTimeout(() => {
-        this.saveState();
-      }, this.config.history.noteDebounceDelay);
-    }
+    if (!currentFrame) return;
+    currentFrame.notes = this.dom.frameNotes.value;
+    this.updateFrameThumbnail(this.state.currentFrameIndex);
+    this.state.pendingNoteSave = true;
+    this.markDirty();
+    clearTimeout(this.state.noteDebounceTimer);
+    this.state.noteDebounceTimer = setTimeout(() => {
+      this.state.noteDebounceTimer = null;
+      this.state.pendingNoteSave = false;
+      this.saveState();
+    }, this.config.history.noteDebounceDelay);
   }
 
-handleKeyDown = (e) => {
-    if (e.ctrlKey || e.metaKey) {
-      if (e.key === 'z') { e.preventDefault(); this.undo(); }
-      else if (e.key === 'y') { e.preventDefault(); this.redo(); }
+
+
+  selectPlayerByKeyboard(direction = 1) {
+    const frame = this.state.frames[this.state.currentFrameIndex];
+    if (!frame || frame.players.length === 0) {
+      this.setInstruction('Add a player before choosing an action.');
+      return;
+    }
+    const currentIndex = frame.players.findIndex(player => player.id === this.state.selectedPlayerId);
+    const nextIndex = currentIndex < 0
+      ? (direction > 0 ? 0 : frame.players.length - 1)
+      : (currentIndex + direction + frame.players.length) % frame.players.length;
+    const player = frame.players[nextIndex];
+    const rect = this.dom.canvas.getBoundingClientRect();
+    const viewportX = rect.left + player.x * (rect.width / this.config.canvas.width);
+    const viewportY = rect.top + player.y * (rect.height / this.config.canvas.height);
+    this.showActionWheel(player, viewportX, viewportY);
+    this.setInstruction('Selected player ' + player.label + '. Use an action shortcut or Tab to the action buttons.');
+  }
+
+  handleKeyDown = (e) => {
+    const target = e.target;
+    const isTyping = target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+    if (isTyping) return;
+
+    if (this.state.placementPlayerLabel) {
+      const key = e.key.toLowerCase();
+      const step = e.shiftKey ? 25 : 10;
+      if (key.startsWith('arrow')) {
+        const delta = {
+          arrowleft: [-step, 0], arrowright: [step, 0],
+          arrowup: [0, -step], arrowdown: [0, step]
+        }[key];
+        const cursor = this.state.placementCursor;
+        this.state.placementCursor = this.clampCourtPoint(cursor.x + delta[0], cursor.y + delta[1], this.config.player.radius);
+        this.draw();
+        e.preventDefault();
+        return;
+      }
+      if (key === 'enter' || key === ' ') {
+        this.placeSelectedPlayerAt(this.state.placementCursor.x, this.state.placementCursor.y);
+        e.preventDefault();
+        return;
+      }
+      if (key === 'escape') {
+        this.clearPlacementSelection();
+        this.draw();
+        this.setInstruction('Player placement cancelled');
+        e.preventDefault();
+        return;
+      }
     }
 
-    const targetTagName = e.target ? e.target.tagName : '';
-    const isTyping = targetTagName === 'INPUT' || targetTagName === 'TEXTAREA' || targetTagName === 'SELECT';
+    if (this.state.isDrawingLine && this.state.keyboardCursor) {
+      const key = e.key.toLowerCase();
+      const step = e.shiftKey ? 25 : 10;
+      if (key.startsWith('arrow')) {
+        const delta = {
+          arrowleft: [-step, 0], arrowright: [step, 0],
+          arrowup: [0, -step], arrowdown: [0, step]
+        }[key];
+        const position = this.clampCourtPoint(
+          this.state.keyboardCursor.x + delta[0],
+          this.state.keyboardCursor.y + delta[1]
+        );
+        this.state.keyboardCursor = position;
+        this.state.previewLine.points[this.state.previewLine.points.length - 1] = position;
+        this.draw();
+        e.preventDefault();
+        return;
+      }
+      if (key === 'enter') {
+        if (e.shiftKey) {
+          this.finalizePreviewLine(this.state.keyboardCursor.x, this.state.keyboardCursor.y);
+        } else {
+          this.addWaypoint(this.state.keyboardCursor.x, this.state.keyboardCursor.y);
+        }
+        e.preventDefault();
+        return;
+      }
+      if (key === 'escape') {
+        this.cancelDrawingInteraction('Action cancelled');
+        this.draw();
+        e.preventDefault();
+        return;
+      }
+    }
 
-    if (this.state.selectedPlayerId && !isTyping) { // <-- FIX: Added !isTyping condition
+    if (!this.state.isDrawingLine && !this.state.placementPlayerLabel &&
+        !this.state.isAnimating && !this.state.isExporting &&
+        e.target === this.dom.canvas) {
+      const key = e.key.toLowerCase();
+      const direction = {
+        arrowright: 1,
+        arrowdown: 1,
+        arrowleft: -1,
+        arrowup: -1
+      }[key];
+      if (direction) {
+        this.selectPlayerByKeyboard(direction);
+        e.preventDefault();
+        return;
+      }
+    }
+
+    if (e.ctrlKey || e.metaKey) {
+      const key = e.key.toLowerCase();
+      if (key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) this.redo(); else this.undo();
+        return;
+      }
+      if (key === 'y') { e.preventDefault(); this.redo(); return; }
+    }
+
+    if (this.state.selectedPlayerId) {
       const key = e.key.toLowerCase();
       const toolMap = {
-        'm': 'cut',
-        'p': 'pass',
-        's': 'screen',
-        'd': 'dribble',
-        'x': 'shoot',
-        'b': 'assign-ball',
-        'delete': 'delete',
-        'backspace': 'delete'
+        m: 'cut', p: 'pass', s: 'screen', d: 'dribble',
+        x: 'shoot', b: 'assign-ball', delete: 'delete', backspace: 'delete'
       };
       if (toolMap[key]) {
         e.preventDefault();
         this.handleWheelAction(toolMap[key]);
-      }
-      if (key === 'escape') {
+      } else if (key === 'escape') {
         e.preventDefault();
         this.hideActionWheel();
       }
@@ -1250,15 +1759,12 @@ handleKeyDown = (e) => {
 
     if (this.state.isDrawingLine && e.key === 'Escape') {
       e.preventDefault();
-      clearTimeout(this.state.clickTimerId);
-      this.state.clickTimerId = null;
-      this.state.isDrawingLine = false;
-      this.state.previewLine = null;
-      this.dom.canvas.classList.remove('drawing-line');
+      this.cancelDrawingInteraction('Line cancelled');
       this.draw();
-      this.setInstruction('Line cancelled');
     }
   }
+
+
 
   handleAnimate = () => {
     if (this.state.isExporting) return;
@@ -1269,10 +1775,17 @@ handleKeyDown = (e) => {
         this.showAlert('You need at least two frames to animate.');
         return;
       }
+      this.flushPendingNotes();
+      this.cancelPlayerDrag();
+      this.cancelDrawingInteraction();
+      this.clearPlacementSelection();
+      this.hideActionWheelImmediate();
+      this.state.selectedPlayerId = null;
+      this.state.selectedLineId = null;
       this.state.isAnimating = true;
       this.state.currentFramePlaying = 0;
       this.state.animationStartTime = 0;
-      this.dom.animateBtn.textContent = '⏹️ Stop';
+      this.dom.animateBtn.textContent = 'Stop';
       this.dom.animateBtn.classList.remove('btn-primary');
       this.dom.animateBtn.classList.add('btn-danger');
       this.renderFrameList();
@@ -1311,6 +1824,11 @@ handleKeyDown = (e) => {
   handleCanvasPointerDown = (x, y, viewportX, viewportY, e) => {
     if (this.state.isAnimating || this.state.isExporting) return;
 
+    if (this.state.placementPlayerLabel) {
+      this.placeSelectedPlayerAt(x, y, viewportX, viewportY);
+      return;
+    }
+
     if (this.state.isDrawingLine) {
       const now = Date.now();
       if (now - this.state.lastClickTime < this.config.interaction.doubleClickTime) {
@@ -1323,30 +1841,14 @@ handleKeyDown = (e) => {
       return;
     }
 
-    const clickedLine = this.getLineAtCoord(x, y);
-    if (clickedLine) {
-      this.state.selectedLineId = clickedLine.id;
-      this.draw();
-      if (confirm('Delete this action line?')) {
-        const currentFrame = this.state.frames[this.state.currentFrameIndex];
-        currentFrame.lines = currentFrame.lines.filter(l => l.id !== clickedLine.id);
-        this.state.selectedLineId = null;
-        this.draw();
-        this.saveState();
-        this.setInstruction('Line deleted');
-      } else {
-        this.state.selectedLineId = null;
-        this.draw();
-      }
-      return;
-    }
-
+    // Players take priority over action lines because every action begins at
+    // its actor. This keeps a player selectable even when a line touches them.
     const playerAtStart = this.getPlayerAtCoord(x, y);
     if (playerAtStart) {
       this.state.isDragging = true;
       this.state.draggingPlayer = playerAtStart;
-      this.state.dragStartX = x;
-      this.state.dragStartY = y;
+      this.state.dragStartPlayerX = playerAtStart.x;
+      this.state.dragStartPlayerY = playerAtStart.y;
       this.state.dragOffsetX = x - playerAtStart.x;
       this.state.dragOffsetY = y - playerAtStart.y;
       this.state.selectedPlayerId = playerAtStart.id;
@@ -1355,11 +1857,23 @@ handleKeyDown = (e) => {
       document.addEventListener('mousemove', this.onDocumentMouseMove);
       document.addEventListener('mouseup', this.onDocumentMouseUp);
       e.preventDefault();
-    } else {
-      this.state.selectedPlayerId = null;
-      this.hideActionWheel();
-      this.scheduleDraw();
+      return;
     }
+
+    const clickedLine = this.getLineAtCoord(x, y);
+    if (clickedLine) {
+      const currentFrame = this.state.frames[this.state.currentFrameIndex];
+      currentFrame.lines = currentFrame.lines.filter(line => line.id !== clickedLine.id);
+      this.state.selectedLineId = null;
+      this.draw();
+      this.saveState();
+      this.setInstruction('Action deleted. Use Undo to restore it.');
+      return;
+    }
+
+    this.state.selectedPlayerId = null;
+    this.hideActionWheel();
+    this.scheduleDraw();
   }
 
   handleCanvasPointerMove = (x, y) => {
@@ -1376,11 +1890,18 @@ handleKeyDown = (e) => {
     }
 
     if (this.state.isDragging && this.state.draggingPlayer) {
-      this.state.draggingPlayer.x = x - this.state.dragOffsetX;
-      this.state.draggingPlayer.y = y - this.state.dragOffsetY;
+      const position = this.clampCourtPoint(
+        x - this.state.dragOffsetX,
+        y - this.state.dragOffsetY,
+        this.state.draggingPlayer.radius
+      );
+      this.state.draggingPlayer.x = position.x;
+      this.state.draggingPlayer.y = position.y;
       this.scheduleDraw();
     } else if (this.state.isDrawingLine) {
-      this.state.previewLine.points[this.state.previewLine.points.length - 1] = { x, y };
+      const position = this.clampCourtPoint(x, y);
+      this.state.previewLine.points[this.state.previewLine.points.length - 1] = position;
+      this.state.keyboardCursor = { x: position.x, y: position.y };
       this.scheduleDraw();
     }
   }
@@ -1393,9 +1914,11 @@ handleKeyDown = (e) => {
       this.state.isDragging = false;
       this.state.draggingPlayer = null;
 
-if (this.isDragSignificant(x, y)) {
-        this.saveState();
-      }
+      const moved = Math.hypot(
+        draggedPlayer.x - this.state.dragStartPlayerX,
+        draggedPlayer.y - this.state.dragStartPlayerY
+      ) > 0.1;
+      if (moved) this.saveState();
 
       this.showActionWheel(draggedPlayer, viewportX, viewportY);
       this.scheduleDraw();
@@ -1454,6 +1977,11 @@ if (this.isDragSignificant(x, y)) {
       e.preventDefault();
       return;
     }
+    this.cancelPlayerDrag();
+    this.cancelDrawingInteraction();
+    this.hideActionWheelImmediate();
+    this.state.selectedPlayerId = null;
+    this.clearPlacementSelection();
     const icon = e.target.closest('.player-tool-icon');
     e.dataTransfer.setData('text/plain', icon.dataset.player);
     e.dataTransfer.effectAllowed = 'copy';
@@ -1463,9 +1991,10 @@ if (this.isDragSignificant(x, y)) {
   handlePlayerDragEnd = (e) => {
     const icon = e.target.closest('.player-tool-icon');
     icon.classList.remove('dragging');
-    this.setInstruction('Drag a player onto the court');
+    this.setInstruction('Select a player to tap-to-place, or drag one onto the court.');
   }
   handleDragOver = (e) => {
+    if (this.state.isAnimating || this.state.isExporting) return;
     e.preventDefault();
     this.dom.canvas.classList.add('drag-over');
     e.dataTransfer.dropEffect = 'copy';
@@ -1476,6 +2005,7 @@ if (this.isDragSignificant(x, y)) {
   handleDrop = (e) => {
     e.preventDefault();
     this.dom.canvas.classList.remove('drag-over');
+    if (this.state.isAnimating || this.state.isExporting) return;
     const playerLabel = e.dataTransfer.getData('text/plain');
     if (playerLabel) {
       const { x, y, viewportX, viewportY } = this.getMousePos(e);
@@ -1494,9 +2024,11 @@ if (this.isDragSignificant(x, y)) {
 
   handleSave = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
-    const playName = this.dom.playNameInput.value || 'Untitled Play';
-    const filename = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+    this.flushPendingNotes();
+    const playName = this.dom.playNameInput.value.trim() || 'Untitled Play';
+    const filename = playName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.json';
     const saveData = {
+      formatVersion: 1,
       playName,
       courtType: this.state.courtType,
       frames: this.state.frames,
@@ -1504,171 +2036,151 @@ if (this.isDragSignificant(x, y)) {
       nextPlayerId: this.state.nextPlayerId
     };
     try {
-      const jsonString = JSON.stringify(saveData, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(saveData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      this.state.isDirty = false;
+      this.updateSaveStatus();
+      this.clearAutosave();
+      this.setInstruction('Play saved to JSON file');
     } catch (error) {
       console.error('Save error:', error);
-      this.showAlert('Failed to save play.');
+      this.showAlert('Failed to save play: ' + error.message);
     }
   }
 
   handleLoadFile = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      this.handleLoad(file);
-    }
-    e.target.value = null; // Reset input
-  }
-
-handleLoadFile = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      this.handleLoad(file);
-    }
+    if (file) this.handleLoad(file);
     e.target.value = null;
   }
 
-async handleLoad(file) {
-    if (!file) return;
-
+  async handleLoad(file) {
+    if (!file || this.state.isExporting) return;
     await this.safeOperation(async () => {
-      const text = await file.text();
-      const loadedData = JSON.parse(text);
-
-      this.validatePlayData(loadedData);
+      if (file.size > PlayData.MAX_FILE_BYTES) {
+        throw new Error('Play files must be 5 MB or smaller');
+      }
+      const parsed = JSON.parse(await file.text());
+      const loadedData = PlayData.normalizePlayData(parsed);
+      if (this.state.isDirty &&
+          !confirm('Load this play and discard the current unsaved changes?')) return;
 
       this.handleNewPlay(false);
-      this.state.courtType = loadedData.courtType || 'half';
+      this.state.courtType = loadedData.courtType;
       this.state.frames = loadedData.frames;
-      this.state.nextFrameId = loadedData.nextFrameId || (this.state.frames.length + 1);
-
-      const maxId = this.state.frames.reduce((max, frame) => {
-        const frameMax = frame.players.reduce((pMax, p) => Math.max(pMax, p.id), 0);
-        return Math.max(max, frameMax);
-      }, 0);
-      this.state.nextPlayerId = loadedData.nextPlayerId || maxId + 1;
-
-      this.state.frames.forEach(frame => {
-        frame.lines.forEach(line => {
-          if (!line.id) line.id = this.lineIdCounter++;
-        });
-      });
-
+      this.state.nextFrameId = loadedData.nextFrameId;
+      this.state.nextPlayerId = loadedData.nextPlayerId;
+      const existingLineIds = this.state.frames.flatMap(frame => frame.lines.map(line => line.id));
+      this.lineIdCounter = Math.max(0, ...existingLineIds) + 1;
       this.state.history = [this.copyFrames(this.state.frames)];
       this.state.historyIndex = 0;
+      this.state.isDirty = false;
+      this.state.pendingNoteSave = false;
+      this.clearAutosave();
+      this.updateSaveStatus();
       this.updateHistoryButtons();
-
-      this.dom.playNameInput.value = loadedData.playName || '';
+      this.dom.playNameInput.value = loadedData.playName;
       this.dom.courtToggle.value = this.state.courtType;
-      this.switchFrame(0);
+      this.switchFrame(0, { flushNotes: false });
+      this.setInstruction('Play loaded');
     }, 'Could not load play file');
   }
 
-  // --- NEW FUNCTION ---
   validatePlayData(data) {
-    // Note: This is a basic validator. A production app might use a
-    // library like Zod or Ajv for more comprehensive schema checking.
-    const schema = {
-      playName: 'string',
-      courtType: ['half', 'full'],
-      frames: 'array',
-      nextFrameId: 'number',
-      nextPlayerId: 'number'
-    };
-
-    // Validate required fields
-    if (!data.frames || !Array.isArray(data.frames)) {
-      throw new Error('Invalid frames data');
-    }
-    
-    // Check other top-level properties (optional)
-    if (data.hasOwnProperty('courtType') && !schema.courtType.includes(data.courtType)) {
-      throw new Error('Invalid courtType');
-    }
-    if (data.hasOwnProperty('playName') && typeof data.playName !== schema.playName) {
-       throw new Error('Invalid playName');
-    }
-    // ... add more checks for nextFrameId, nextPlayerId ...
-
-    // Validate frame structure
-    data.frames.forEach((frame, i) => {
-      if (typeof frame !== 'object' || frame === null) throw new Error(`Frame ${i} is not an object`);
-      if (!frame.hasOwnProperty('id') || typeof frame.id !== 'number') throw new Error(`Frame ${i} missing or invalid id`);
-      if (!Array.isArray(frame.players)) throw new Error(`Frame ${i} invalid players array`);
-      if (!Array.isArray(frame.lines)) throw new Error(`Frame ${i} invalid lines array`);
-      // TODO: Add deep validation for player and line objects
-    });
-
-    return true;
+    return PlayData.validatePlayData(data);
   }
+
+
 
   handleExportPDF = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
+    this.flushPendingNotes();
+    const originalFrameIndex = this.state.currentFrameIndex;
     this.state.isExporting = true;
     this.dom.exportPdfBtn.disabled = true;
     this.showLoading('Generating PDF...');
 
     setTimeout(() => {
       try {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('portrait', 'mm', 'a4');
-        const originalFrameIndex = this.state.currentFrameIndex;
-        const playName = this.dom.playNameInput.value || 'Untitled Play';
-
-        const margin = 10;
-        const pageW = 210;
-        const pageH = 297;
-        const contentW = pageW - margin * 2;
-        const imgColW = 80;
-        const gutter = 10;
-        const notesColW = contentW - imgColW - gutter;
-        const imgColH = (imgColW / 4) * 3;
-        const frameRowH = (pageH - margin * 2) / 3;
-
-        for (let i = 0; i < this.state.frames.length; i++) {
-          const frameIndexInPage = i % 3;
-          if (i > 0 && frameIndexInPage === 0) doc.addPage();
-
-          this.switchFrame(i);
-          const imgData = this.dom.canvas.toDataURL('image/png');
-          const yPos = margin + frameIndexInPage * frameRowH + 5;
-          const imgX = margin;
-
-          doc.addImage(imgData, 'PNG', imgX, yPos, imgColW, imgColH);
-
-          const notesX = margin + imgColW + gutter;
-          doc.setFontSize(14);
-          doc.setFont(undefined, 'bold');
-          doc.text(`Frame ${i + 1}`, notesX, yPos + 5);
-
-          doc.setFontSize(10);
-          doc.setFont(undefined, 'normal');
-          const notesText = this.state.frames[i].notes || 'No notes';
-          const notesLines = doc.splitTextToSize(notesText, notesColW);
-          doc.text(notesLines, notesX, yPos + 12);
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          throw new Error('PDF library did not load. Check your internet connection and try again.');
         }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('landscape', 'mm', 'a4');
+        const margin = 12;
+        const pageW = 297;
+        const pageH = 210;
+        const imageX = margin;
+        const imageY = 34;
+        const imageW = 150;
+        const imageH = 112.5;
+        const notesX = 174;
+        const notesW = pageW - margin - notesX;
+        const lineHeight = 5.2;
+        const maxLines = Math.floor((pageH - 42 - margin) / lineHeight);
+        const playName = this.dom.playNameInput.value.trim() || 'Untitled Play';
 
-        const filename = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+        const addHeader = (frameIndex, continued = false) => {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(17);
+          doc.text(playName, margin, 16);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          const frameLabel = 'Frame ' + (frameIndex + 1) + ' of ' + this.state.frames.length;
+          doc.text(frameLabel + (continued ? ' — Notes continued' : ''), margin, 24);
+          doc.setDrawColor(210, 216, 224);
+          doc.line(margin, 28, pageW - margin, 28);
+        };
+
+        this.state.frames.forEach((frame, index) => {
+          if (index > 0) doc.addPage();
+          this.switchFrame(index, { flushNotes: false });
+          addHeader(index);
+          doc.addImage(this.dom.canvas.toDataURL('image/png'), 'PNG', imageX, imageY, imageW, imageH);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(13);
+          doc.text('Coaching notes', notesX, 38);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+
+          const lines = doc.splitTextToSize(frame.notes || 'No notes for this frame.', notesW);
+          let offset = 0;
+          while (offset < lines.length) {
+            if (offset > 0) {
+              doc.addPage();
+              addHeader(index, true);
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(10);
+            }
+            const chunk = lines.slice(offset, offset + maxLines);
+            doc.text(chunk, notesX, 46);
+            offset += chunk.length;
+          }
+        });
+
+        const filename = playName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.pdf';
         doc.save(filename);
-        this.switchFrame(originalFrameIndex);
+        this.setInstruction('PDF exported');
       } catch (error) {
         console.error('PDF export error:', error);
-        this.showAlert(`Could not generate PDF: ${error.message}`);
+        this.showAlert('Could not generate PDF: ' + error.message);
       } finally {
         this.state.isExporting = false;
         this.dom.exportPdfBtn.disabled = false;
         this.hideLoading();
+        this.switchFrame(Math.min(originalFrameIndex, this.state.frames.length - 1), { flushNotes: false });
       }
     }, 100);
   }
+
+
 
   handleExportVideo = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
@@ -1677,97 +2189,169 @@ async handleLoad(file) {
       return;
     }
     if (!this.dom.canvas.captureStream || !window.MediaRecorder) {
-      this.showAlert('Video export not supported in this browser. Use Chrome, Firefox, or Edge.');
+      this.showAlert('Video export is not supported in this browser.');
       return;
     }
+
+    this.flushPendingNotes();
+    const originalFrameIndex = this.state.currentFrameIndex;
+    const recordedChunks = [];
+    let finished = false;
+    let recorder = null;
+    let stream = null;
+    let selectedMimeType = '';
+
+    const finishExport = (error = null, shouldDownload = false) => {
+      if (finished) return;
+      finished = true;
+
+      if (this.videoAnimationFrameId !== null) {
+        cancelAnimationFrame(this.videoAnimationFrameId);
+        this.videoAnimationFrameId = null;
+      }
+
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch (stopError) {
+          console.warn('Could not stop video recorder cleanly:', stopError);
+        }
+      }
+
+      if (stream) {
+        stream.getTracks().forEach(track => {
+          try { track.stop(); } catch (trackError) {
+            console.warn('Could not stop captured media track:', trackError);
+          }
+        });
+      }
+
+      this.videoRecorder = null;
+      this.videoStream = null;
+      this.state.isExporting = false;
+      this.dom.exportVideoBtn.disabled = false;
+      this.hideLoading();
+
+      this.switchFrame(
+        Math.min(originalFrameIndex, this.state.frames.length - 1),
+        { flushNotes: false }
+      );
+
+      if (error) {
+        console.error('Video export error:', error);
+        this.showAlert('Could not record video: ' + error.message);
+        return;
+      }
+
+      if (shouldDownload) {
+        if (recordedChunks.length === 0) {
+          this.showAlert('The video recorder did not produce any video data. Try again in another browser.');
+          return;
+        }
+        try {
+          const mimeType = (recorder && recorder.mimeType) || selectedMimeType || 'video/webm';
+          const blob = new Blob(recordedChunks, { type: mimeType });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          const playName = this.dom.playNameInput.value.trim() || 'Untitled Play';
+          link.href = url;
+          link.download = playName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.webm';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          this.setInstruction('Video exported');
+        } catch (downloadError) {
+          console.error('Video download error:', downloadError);
+          this.showAlert('The video was recorded but could not be downloaded: ' + downloadError.message);
+        }
+      }
+    };
+
     this.state.isExporting = true;
     this.dom.exportVideoBtn.disabled = true;
     this.showLoading('Recording Video...');
 
     try {
-      const stream = this.dom.canvas.captureStream(this.config.video.fps);
-      const recorder = new MediaRecorder(stream, { mimeType: this.config.video.mimeType });
-      const recordedChunks = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+      const mimeCandidates = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm'
+      ];
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        selectedMimeType = mimeCandidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
+        if (!selectedMimeType) {
+          throw new Error('This browser does not report a supported WebM recording format.');
+        }
+      } else {
+        selectedMimeType = 'video/webm';
+      }
 
-      recorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: this.config.video.mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const playName = this.dom.playNameInput.value || 'Untitled Play';
-        a.href = url;
-        a.download = `${playName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webm`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        this.state.isExporting = false;
-        this.dom.exportVideoBtn.disabled = false;
-        this.hideLoading();
-        this.switchFrame(0);
+      stream = this.dom.canvas.captureStream(this.config.video.fps);
+      const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
+      recorder = options ? new MediaRecorder(stream, options) : new MediaRecorder(stream);
+      this.videoRecorder = recorder;
+      this.videoStream = stream;
+
+      recorder.ondataavailable = event => {
+        if (event.data && event.data.size > 0) recordedChunks.push(event.data);
       };
-
-      recorder.onerror = (e) => {
-        console.error('Recording error:', e);
-        this.showAlert('Video recording failed.');
-        this.state.isExporting = false;
-        this.dom.exportVideoBtn.disabled = false;
-        this.hideLoading();
+      recorder.onerror = event => {
+        const recorderError = event.error || new Error('The browser reported a recording error.');
+        finishExport(recorderError, false);
       };
+      recorder.onstop = () => finishExport(null, true);
 
-      recorder.start();
+      recorder.start(250);
 
       let frameToPlay = 0;
       let frameStartTime = 0;
       let holdingFinalFrame = false;
       let finalFrameHoldStart = 0;
 
-      const recordAnimationLoop = (timestamp) => {
+      const recordAnimationLoop = timestamp => {
+        if (finished) return;
         if (!this.state.isExporting) {
-          recorder.stop();
+          if (recorder.state !== 'inactive') recorder.stop();
+          else finishExport(new Error('Video export was interrupted.'), false);
           return;
         }
         if (frameStartTime === 0) frameStartTime = timestamp;
 
         if (holdingFinalFrame) {
           if (timestamp - finalFrameHoldStart >= this.config.animation.finalFrameHold) {
-            recorder.stop();
+            if (recorder.state !== 'inactive') recorder.stop();
           } else {
-            requestAnimationFrame(recordAnimationLoop);
+            this.videoAnimationFrameId = requestAnimationFrame(recordAnimationLoop);
           }
           return;
         }
 
-        const elapsed = timestamp - frameStartTime;
-        const progress = Math.min(1.0, elapsed / this.config.animation.speed);
         const currentRecordFrame = this.state.frames[frameToPlay];
-        if (!currentRecordFrame) { recorder.stop(); return; }
+        if (!currentRecordFrame) {
+          if (recorder.state !== 'inactive') recorder.stop();
+          else finishExport(new Error('A play frame was missing during recording.'), false);
+          return;
+        }
 
-        // [REFACTOR] Use centralized render method
+        const elapsed = timestamp - frameStartTime;
+        const progress = Math.min(1, elapsed / this.config.animation.speed);
         this._renderAnimationFrame(progress, currentRecordFrame);
 
-        if (progress < 1.0) {
-          requestAnimationFrame(recordAnimationLoop);
+        if (progress < 1) {
+          this.videoAnimationFrameId = requestAnimationFrame(recordAnimationLoop);
         } else {
           frameToPlay++;
           frameStartTime = 0;
           if (frameToPlay >= this.state.frames.length) {
             holdingFinalFrame = true;
             finalFrameHoldStart = timestamp;
-            requestAnimationFrame(recordAnimationLoop);
-          } else {
-            requestAnimationFrame(recordAnimationLoop);
           }
+          this.videoAnimationFrameId = requestAnimationFrame(recordAnimationLoop);
         }
-      }
-      requestAnimationFrame(recordAnimationLoop);
+      };
 
+      this.videoAnimationFrameId = requestAnimationFrame(recordAnimationLoop);
     } catch (error) {
-      console.error('Video export error:', error);
-      this.showAlert(`Could not record video: ${error.message}`);
-      this.state.isExporting = false;
-      this.dom.exportVideoBtn.disabled = false;
-      this.hideLoading();
+      finishExport(error, false);
     }
   }
 }
