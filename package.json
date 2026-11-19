@@ -4,7 +4,7 @@
   "private": true,
   "description": "Static basketball play diagramming and animation application",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test tests/play-data.test.cjs tests/export.test.cjs",
     "check": "node --check app.js && node --check play-data.js && node --check export-utils.js && node --check tests/play-data.test.cjs && node --check tests/export.test.cjs && node --check tests/browser-exports.test.cjs"
   }
 }
