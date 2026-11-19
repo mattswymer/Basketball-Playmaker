@@ -87,6 +87,18 @@ function startServer() {
       assert.equal(backgroundVisible, true, courtType + '-court artwork should remain visible');
     }
 
+    // Adding many slides must scroll the storyboard without moving the court.
+    const initialCanvasBox = await page.locator('#play-canvas').boundingBox();
+    for (let i = 0; i < 12; i++) await page.locator('#add-frame').click();
+    const finalCanvasBox = await page.locator('#play-canvas').boundingBox();
+    assert.ok(Math.abs(finalCanvasBox.y - initialCanvasBox.y) < 1, 'Adding frames must not move the court canvas');
+    const frameListMetrics = await page.locator('#frame-list').evaluate(el => ({
+      clientHeight: el.clientHeight,
+      scrollHeight: el.scrollHeight
+    }));
+    assert.ok(frameListMetrics.scrollHeight > frameListMetrics.clientHeight, 'Frame storyboard should scroll independently');
+    await page.locator('.frame-thumbnail').first().click();
+
     // Create two frames so video export has an actual sequence to record.
     await page.locator('[data-player="1"]').click();
     const canvas = page.locator('#play-canvas');
@@ -147,7 +159,50 @@ function startServer() {
     assert.deepEqual(pageErrors, [], 'Browser should not report uncaught page errors');
 
     await context.close();
-    process.stdout.write('Browser export smoke test passed: PDF and video files downloaded.\n');
+
+    // Repeat the export checks in the actual downloaded-file scenario (file://).
+    const localPage = await browser.newPage({ acceptDownloads: true });
+    const localErrors = [];
+    localPage.on('pageerror', error => localErrors.push(error.message));
+    await localPage.goto(require('node:url').pathToFileURL(path.join(root, 'index.html')).href);
+    await localPage.waitForFunction(() => window.jspdf && window.PlaymakerExport);
+    const localCanvasSecurity = await localPage.locator('#play-canvas').evaluate(canvas => {
+      try {
+        const png = canvas.toDataURL('image/png');
+        const stream = canvas.captureStream(1);
+        stream.getTracks().forEach(track => track.stop());
+        return { clean: png.startsWith('data:image/png'), stream: true };
+      } catch (error) {
+        return { clean: false, stream: false, error: error.message };
+      }
+    });
+    assert.equal(localCanvasSecurity.clean, true, 'file:// canvas must export: ' + (localCanvasSecurity.error || ''));
+    assert.equal(localCanvasSecurity.stream, true, 'file:// canvas must record: ' + (localCanvasSecurity.error || ''));
+
+    await localPage.locator('#export-pdf').click();
+    await localPage.locator('#export-download-panel').waitFor({ state: 'visible', timeout: 20000 });
+    const [localPdf] = await Promise.all([
+      localPage.waitForEvent('download'),
+      localPage.locator('#export-download-link').click()
+    ]);
+    assert.match(localPdf.suggestedFilename(), /\\.pdf$/i);
+    assert.ok(fs.statSync(await localPdf.path()).size > 500);
+
+    await localPage.locator('[data-player="1"]').click();
+    const localBounds = await localPage.locator('#play-canvas').boundingBox();
+    await localPage.mouse.click(localBounds.x + localBounds.width * 0.35, localBounds.y + localBounds.height * 0.5);
+    await localPage.locator('#add-frame').click();
+    await localPage.locator('#export-video-btn').click();
+    await localPage.locator('#export-download-panel').waitFor({ state: 'visible', timeout: 60000 });
+    const [localVideo] = await Promise.all([
+      localPage.waitForEvent('download', { timeout: 20000 }),
+      localPage.locator('#export-download-link').click()
+    ]);
+    assert.match(localVideo.suggestedFilename(), /\\.(webm|mp4)$/i);
+    assert.ok(fs.statSync(await localVideo.path()).size > 1000);
+    assert.deepEqual(localErrors, [], 'file:// app should not report uncaught errors');
+    await localPage.close();
+    process.stdout.write('Browser export smoke test passed: hosted and file:// exports downloaded; storyboard scrolls independently.\n');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));
