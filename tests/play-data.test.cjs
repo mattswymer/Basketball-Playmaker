@@ -6,7 +6,7 @@ const PlayData = require('../play-data.js');
 
 function makePlay() {
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     playName: 'Horns Entry',
     courtType: 'half',
     nextFrameId: 3,
@@ -67,10 +67,21 @@ test('normalizes legacy files with missing format version and frame notes', () =
   delete legacy.frames[1].notes;
 
   const normalized = PlayData.normalizePlayData(legacy);
-  assert.equal(normalized.formatVersion, 1);
+  assert.equal(normalized.formatVersion, 2);
   assert.equal(normalized.frames[0].notes, '');
   assert.equal(normalized.frames[1].notes, '');
   assert.equal(normalized.courtType, 'half');
+});
+
+test('migrates version 1 player and path coordinates to the NFHS master court', () => {
+  const legacy = makePlay();
+  legacy.formatVersion = 1;
+  const normalized = PlayData.normalizePlayData(legacy);
+  assert.equal(normalized.formatVersion, 2);
+  assert.equal(normalized.frames[0].players[0].x, 100 * 1.89);
+  assert.equal(normalized.frames[0].players[0].y, 300 * 1.5);
+  assert.equal(normalized.frames[0].lines[0].points[1].x, 200 * 1.89);
+  assert.equal(normalized.frames[0].lines[0].points[1].y, 220 * 1.5);
 });
 
 test('repairs missing and duplicate action IDs across the entire play', () => {
