@@ -4,7 +4,7 @@ A browser-based basketball play diagramming and animation tool for coaches and p
 
 ## What it does
 
-- **Court diagrams:** Work on half-court or full-court backgrounds.
+- **Court diagrams:** Work on self-contained, Canvas2D half-court or full-court hardwood backgrounds. They work when opening the downloaded app directly from `file://` and remain safe for PDF and video export.
 - **Offense and defense:** Add offensive players 1–5 and defensive players X1–X5.
 - **Basketball actions:** Draw cuts/movement, dribbles, passes, screens, and shots. Each action supports a multi-point route.
 - **Frame sequences:** Create a play one frame at a time. Player locations and ball possession carry forward when a frame is added.
@@ -21,7 +21,7 @@ The application is static and does not require a server or account.
 
 1. Download or clone this repository.
 2. Open `index.html` in a modern browser.
-3. Keep the `images` directory alongside the HTML, CSS, and JavaScript files.
+3. The court backgrounds are drawn directly by the app; no separate image folder, web server, or network connection is required.
 
 PDF creation uses the jsPDF library bundled in the repository, so it does not depend on a third-party CDN. Video export uses the browser's Canvas capture and MediaRecorder APIs; the app selects a compatible WebM or MP4 recording format when the browser supports one. Keep the tab visible until recording finishes. After generation, click the in-app Download link to save the file. The app deliberately does not trigger a second, synthetic download click after its asynchronous export work, because browsers can block that click.
 
