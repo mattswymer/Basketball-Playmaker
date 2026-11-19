@@ -49,8 +49,10 @@ class PlaymakerApp {
       history: { maxStates: 50, noteDebounceDelay: 500 },
       video: { fps: 30 },
       images: {
-        halfCourt: 'images/halfcourt.webp',
-        fullCourt: 'images/fullcourt.webp'
+        // Court markings are drawn directly on the canvas so local file://
+        // use never taints the canvas or depends on external image origins.
+        halfCourt: null,
+        fullCourt: null
       }
     };
 
@@ -144,22 +146,11 @@ async safeOperation(operation, errorMessage) {
     this.updateSaveStatus();
     this.restoreAutosave();
 
-    // Load court artwork after the editor is interactive. Missing artwork
-    // should not prevent coaches from drawing on a blank court.
-    const imageResults = await Promise.allSettled([
-      this.loadImage(this.config.images.halfCourt),
-      this.loadImage(this.config.images.fullCourt)
-    ]);
-    if (imageResults[0].status === 'fulfilled') this.halfCourtImg = imageResults[0].value;
-    else console.error('Half-court image failed to load:', imageResults[0].reason);
-    if (imageResults[1].status === 'fulfilled') this.fullCourtImg = imageResults[1].value;
-    else console.error('Full-court image failed to load:', imageResults[1].reason);
-
+    // Court artwork is rendered with Canvas2D primitives (no external images),
+    // keeping the editor canvas origin-clean for PDF and video export locally
+    // and when hosted.
     this.renderFrameList();
     this.draw();
-    if (imageResults.some(result => result.status === 'rejected')) {
-      this.setInstruction('Court artwork could not be loaded. You can still create and save diagrams.');
-    }
     console.log('Basketball Playmaker Pro initialized');
   }
 
@@ -486,20 +477,30 @@ async safeOperation(operation, errorMessage) {
     if (!ctx) return;
     const sx = canvas.width / this.config.canvas.width;
     const sy = canvas.height / this.config.canvas.height;
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const court = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
-    if (court && court.complete) ctx.drawImage(court, 0, 0, canvas.width, canvas.height);
+    this.drawCourtBackground(ctx, this.state.courtType, canvas.width, canvas.height);
     frame.lines.forEach(line => {
       if (!Array.isArray(line.points) || line.points.length < 2) return;
       ctx.save();
       ctx.strokeStyle = '#334155';
       ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
       ctx.setLineDash(line.type === 'pass' ? [3, 2] : []);
-      ctx.beginPath();
-      ctx.moveTo(line.points[0].x * sx, line.points[0].y * sy);
-      line.points.slice(1).forEach(point => ctx.lineTo(point.x * sx, point.y * sy));
-      ctx.stroke();
+      if (line.type === 'dribble') {
+        for (let i = 0; i < line.points.length - 1; i++) {
+          this.drawDribbleLine(
+            { x: line.points[i].x * sx, y: line.points[i].y * sy },
+            { x: line.points[i + 1].x * sx, y: line.points[i + 1].y * sy },
+            false,
+            ctx,
+            sx
+          );
+        }
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(line.points[0].x * sx, line.points[0].y * sy);
+        line.points.slice(1).forEach(point => ctx.lineTo(point.x * sx, point.y * sy));
+        ctx.stroke();
+      }
       ctx.restore();
     });
     frame.players.forEach(player => {
@@ -799,7 +800,7 @@ async safeOperation(operation, errorMessage) {
     this.ctx.stroke();
   }
 
-drawDribbleLine(start, end, drawArrow = true) {
+drawDribbleLine(start, end, drawArrow = true, context = this.ctx, scale = 1) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const distance = Math.hypot(dx, dy);
@@ -808,26 +809,23 @@ drawDribbleLine(start, end, drawArrow = true) {
     const angle = Math.atan2(dy, dx);
     const normalX = -Math.sin(angle);
     const normalY = Math.cos(angle);
-    // One broad, shallow S-curve per segment. The previous repeated sine
-    // wave read as a shaky zig-zag, especially at normal court scale.
-    const bend = Math.min(8, distance * 0.035);
-    const control1 = {
-      x: start.x + dx / 3 + normalX * bend,
-      y: start.y + dy / 3 + normalY * bend
-    };
-    const control2 = {
-      x: start.x + dx * 2 / 3 - normalX * bend,
-      y: start.y + dy * 2 / 3 - normalY * bend
-    };
-
-    this.ctx.beginPath();
-    this.ctx.moveTo(start.x, start.y);
-    this.ctx.bezierCurveTo(
-      control1.x, control1.y,
-      control2.x, control2.y,
-      end.x, end.y
-    );
-    this.ctx.stroke();
+    // A smooth, repeating dribble wave. Dense samples keep the path curved
+    // at every zoom level instead of looking like a polygonal zig-zag.
+    const amplitude = 8 * scale;
+    const wavelength = 46 * scale;
+    const sampleSpacing = Math.max(1.5, 2.5 * scale);
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    for (let travelled = sampleSpacing; travelled < distance; travelled += sampleSpacing) {
+      const t = travelled / distance;
+      const offset = Math.sin((travelled / wavelength) * Math.PI * 2) * amplitude;
+      context.lineTo(
+        start.x + dx * t + normalX * offset,
+        start.y + dy * t + normalY * offset
+      );
+    }
+    context.lineTo(end.x, end.y);
+    context.stroke();
     if (drawArrow) this.drawArrowhead(end, angle);
   }
 
@@ -907,7 +905,8 @@ drawLines(lines, frame = null) {
 
           if (i === points.length - 2) {
             // One arrowhead centered over the two parallel shot lines.
-            this.drawArrowhead(end, angle, 22);
+            const arrowTip = { x: end.x + Math.cos(angle) * 5, y: end.y + Math.sin(angle) * 5 };
+            this.drawArrowhead(arrowTip, angle, 25);
           }
           continue;
         }
@@ -939,14 +938,89 @@ drawLines(lines, frame = null) {
   /**
    * Main render loop. Clears canvas, draws court, lines, and players.
    */
-  draw() {
-    this.ctx.fillStyle = 'white';
-    this.ctx.fillRect(0, 0, this.config.canvas.width, this.config.canvas.height);
+  drawCourtBackground(ctx, courtType, width, height) {
+    const sx = width / this.config.canvas.width;
+    const sy = height / this.config.canvas.height;
+    ctx.save();
+    ctx.scale(sx, sy);
 
-    const courtImg = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
-    if (courtImg && courtImg.complete) {
-      this.ctx.drawImage(courtImg, 0, 0, this.config.canvas.width, this.config.canvas.height);
+    // Hardwood floor: warm vertical planks with subtle grain. Drawn directly
+    // into the canvas, so this background is always safe to export.
+    const floor = ctx.createLinearGradient(0, 0, 800, 600);
+    floor.addColorStop(0, '#b58c62');
+    floor.addColorStop(0.48, '#d0ad7f');
+    floor.addColorStop(1, '#a77d54');
+    ctx.fillStyle = floor;
+    ctx.fillRect(0, 0, 800, 600);
+    for (let x = 0; x <= 800; x += 24) {
+      ctx.fillStyle = (x / 24) % 2 ? 'rgba(92,57,30,0.045)' : 'rgba(255,245,220,0.07)';
+      ctx.fillRect(x, 0, 12, 600);
+      ctx.strokeStyle = 'rgba(85,55,32,0.16)';
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, 600);
+      ctx.stroke();
     }
+    for (let y = 35; y < 600; y += 72) {
+      ctx.strokeStyle = 'rgba(255,245,220,0.08)';
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(800, y + 3);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.94)';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const line = (x1, y1, x2, y2) => {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    };
+    const arc = (x, y, r, start, end, anticlockwise = false) => {
+      ctx.beginPath(); ctx.arc(x, y, r, start, end, anticlockwise); ctx.stroke();
+    };
+
+    // Court perimeter.
+    ctx.strokeRect(8, 8, 784, 584);
+    if (courtType === 'full') {
+      line(8, 300, 792, 300);
+      arc(400, 300, 72, 0, Math.PI * 2);
+      // Both ends use matching keys, rims, restricted areas and three-point arcs.
+      [0, 600].forEach((baseY, index) => {
+        const inward = index === 0 ? 1 : -1;
+        const keyTop = index === 0 ? 8 : 420;
+        const keyBottom = index === 0 ? 180 : 592;
+        ctx.strokeRect(300, keyTop, 200, 172);
+        arc(400, index === 0 ? 180 : 420, 72, 0, Math.PI * 2);
+        line(360, index === 0 ? 42 : 558, 440, index === 0 ? 42 : 558);
+        arc(400, index === 0 ? 58 : 542, 26, 0, Math.PI * 2);
+        line(300, index === 0 ? 8 : 592, 500, index === 0 ? 8 : 592);
+        ctx.beginPath();
+        ctx.arc(400, index === 0 ? 58 : 542, 365,
+          index === 0 ? 0.34 : Math.PI + 0.34,
+          index === 0 ? Math.PI - 0.34 : 2 * Math.PI - 0.34);
+        ctx.stroke();
+      });
+    } else {
+      // Single half court with basket on the top baseline.
+      ctx.strokeRect(300, 8, 200, 175);
+      arc(400, 183, 72, 0, Math.PI * 2);
+      line(360, 42, 440, 42);
+      arc(400, 58, 26, 0, Math.PI * 2);
+      // Restricted-area semicircle and three-point arc.
+      ctx.beginPath(); ctx.arc(400, 58, 48, 0.15, Math.PI - 0.15); ctx.stroke();
+      ctx.beginPath(); ctx.arc(400, 58, 365, 0.28, Math.PI - 0.28); ctx.stroke();
+      // Bottom edge is the half-court division.
+      line(8, 592, 792, 592);
+      arc(400, 592, 72, Math.PI, 0);
+    }
+    ctx.restore();
+  }
+
+  draw() {
+    this.drawCourtBackground(this.ctx, this.state.courtType, this.config.canvas.width, this.config.canvas.height);
 
     const currentFrame = this.state.frames[this.state.currentFrameIndex];
     if (!currentFrame) return;
@@ -997,10 +1071,7 @@ drawLines(lines, frame = null) {
    * @param {object} frame - The current frame object to render.
    */
   _renderAnimationFrame(progress, frame) {
-    this.ctx.fillStyle = 'white';
-    this.ctx.fillRect(0, 0, this.config.canvas.width, this.config.canvas.height);
-    const courtImg = this.state.courtType === 'half' ? this.halfCourtImg : this.fullCourtImg;
-    if (courtImg && courtImg.complete) this.ctx.drawImage(courtImg, 0, 0, this.config.canvas.width, this.config.canvas.height);
+    this.drawCourtBackground(this.ctx, this.state.courtType, this.config.canvas.width, this.config.canvas.height);
 
     this.drawLines(frame.lines, frame);
 
