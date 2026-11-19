@@ -64,8 +64,8 @@ function startServer() {
       document.querySelector('#export-video-btn')
     );
 
-    const masterCourtSize = await page.locator('#play-canvas').evaluate(el => ({ width: el.width, height: el.height }));
-    assert.deepEqual(masterCourtSize, { width: 1512, height: 900 }, 'Court must use the NFHS 1512x900 master dimensions at DPR 1');
+    const initialCourtSize = await page.locator('#play-canvas').evaluate(el => ({ width: el.width, height: el.height }));
+    assert.deepEqual(initialCourtSize, { width: 900, height: 756 }, 'Half court must display as a 50 ft x 42 ft portrait court at DPR 1');
     const basketballIconPixels = await page.locator('#wheel-ball canvas').evaluate(icon => {
       const pixels = icon.getContext('2d').getImageData(0, 0, icon.width, icon.height).data;
       let visible = 0;
@@ -88,6 +88,9 @@ function startServer() {
     for (const courtType of ['half', 'full']) {
       await courtToggle.selectOption(courtType);
       await page.waitForTimeout(100);
+      const courtSize = await page.locator('#play-canvas').evaluate(el => ({ width: el.width, height: el.height }));
+      assert.deepEqual(courtSize, courtType === 'half' ? { width: 900, height: 756 } : { width: 1512, height: 900 },
+        courtType + '-court should use the correct display orientation');
       const backgroundVisible = await page.locator('#play-canvas').evaluate(canvas => {
         const pixel = canvas.getContext('2d').getImageData(
           Math.floor(canvas.width * 0.08), Math.floor(canvas.height * 0.08), 1, 1
