@@ -562,10 +562,14 @@ async safeOperation(operation, errorMessage) {
   loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      // Keep canvases origin-clean so PDF export (toDataURL) and video
-      // recording (captureStream) remain available when artwork is served
-      // from a CORS-enabled asset host. This is harmless for same-origin files.
-      img.crossOrigin = 'anonymous';
+      // Same-origin court artwork (including local/file-based use) must
+      // load normally. Request CORS only for genuinely cross-origin URLs;
+      // setting crossOrigin on local file URLs can prevent the image loading
+      // at all, which makes both half- and full-court backgrounds disappear.
+      const imageUrl = new URL(src, document.baseURI);
+      if (imageUrl.origin !== window.location.origin && imageUrl.protocol !== 'file:') {
+        img.crossOrigin = 'anonymous';
+      }
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error(`Failed to load: ${src}`));
       img.src = src;
