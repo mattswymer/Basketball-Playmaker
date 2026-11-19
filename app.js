@@ -2241,106 +2241,119 @@ shouldSaveState() {
       this.showAlert('You need at least two frames to create a video.');
       return;
     }
-    if (!this.dom.canvas.captureStream || !window.MediaRecorder) {
-      this.showAlert('Video export is not supported in this browser.');
+    if (!this.dom.canvas.captureStream || !window.MediaRecorder ||
+        typeof window.requestAnimationFrame !== 'function') {
+      this.showAlert('Video export is unavailable in this browser or page context. Open the app in Chrome or Edge over HTTPS or localhost.');
       return;
     }
 
     this.flushPendingNotes();
+    this.clearExportDownload();
     const originalFrameIndex = this.state.currentFrameIndex;
     const recordedChunks = [];
     let finished = false;
     let recorder = null;
     let stream = null;
     let selectedMimeType = '';
+    let animationRequestId = null;
+    let watchdogId = null;
+    let stopWatchdogId = null;
 
-    const finishExport = (error = null, shouldDownload = false) => {
-      if (finished) return;
-      finished = true;
-
-      if (this.videoAnimationFrameId !== null) {
-        cancelAnimationFrame(this.videoAnimationFrameId);
-        this.videoAnimationFrameId = null;
+    const cleanup = () => {
+      if (animationRequestId !== null) {
+        window.cancelAnimationFrame(animationRequestId);
+        animationRequestId = null;
       }
-
-      if (recorder && recorder.state !== 'inactive') {
-        try { recorder.stop(); } catch (stopError) {
-          console.warn('Could not stop video recorder cleanly:', stopError);
-        }
+      this.videoAnimationFrameId = null;
+      if (watchdogId !== null) {
+        clearTimeout(watchdogId);
+        watchdogId = null;
       }
-
+      if (stopWatchdogId !== null) {
+        clearTimeout(stopWatchdogId);
+        stopWatchdogId = null;
+      }
       if (stream) {
         stream.getTracks().forEach(track => {
-          try { track.stop(); } catch (trackError) {
-            console.warn('Could not stop captured media track:', trackError);
-          }
+          try { track.stop(); }
+          catch (trackError) { console.warn('Could not stop a captured media track:', trackError); }
         });
       }
-
       this.videoRecorder = null;
       this.videoStream = null;
       this.state.isExporting = false;
       this.dom.exportVideoBtn.disabled = false;
       this.hideLoading();
+      try {
+        this.switchFrame(
+          Math.min(originalFrameIndex, this.state.frames.length - 1),
+          { flushNotes: false }
+        );
+      } catch (restoreError) {
+        console.error('Could not restore the selected frame after video export:', restoreError);
+      }
+    };
 
-      this.switchFrame(
-        Math.min(originalFrameIndex, this.state.frames.length - 1),
-        { flushNotes: false }
-      );
+    const finishExport = (error = null, shouldDownload = false) => {
+      if (finished) return;
+      finished = true;
+
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop(); }
+        catch (stopError) { console.warn('Could not stop the recorder cleanly:', stopError); }
+      }
+      cleanup();
 
       if (error) {
         console.error('Video export error:', error);
         this.showAlert('Could not record video: ' + error.message);
         return;
       }
+      if (!shouldDownload) return;
 
-      if (shouldDownload) {
-        if (recordedChunks.length === 0) {
-          this.showAlert('The video recorder did not produce any video data. Try again in another browser.');
-          return;
+      try {
+        const mimeType = (recorder && recorder.mimeType) || selectedMimeType || 'video/webm';
+        const blob = new Blob(recordedChunks, { type: mimeType });
+        if (blob.size === 0) {
+          throw new Error('The recorder finished without producing video data. Try again in Chrome or Edge.');
         }
-        try {
-          const mimeType = (recorder && recorder.mimeType) || selectedMimeType || 'video/webm';
-          const blob = new Blob(recordedChunks, { type: mimeType });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          const playName = this.dom.playNameInput.value.trim() || 'Untitled Play';
-          link.href = url;
-          link.download = playName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.webm';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
-          this.setInstruction('Video exported');
-        } catch (downloadError) {
-          console.error('Video download error:', downloadError);
-          this.showAlert('The video was recorded but could not be downloaded: ' + downloadError.message);
-        }
+        const extension = PlaymakerExport.getVideoExtension(blob.type || mimeType);
+        const filename = PlaymakerExport.getSafeFilename(
+          this.dom.playNameInput.value.trim() || 'Untitled Play',
+          extension
+        );
+        this.showExportDownload(blob, filename, 'Video');
+      } catch (downloadError) {
+        console.error('Video download error:', downloadError);
+        this.showAlert('The video could not be prepared for download: ' + downloadError.message);
+      }
+    };
+
+    const stopRecording = () => {
+      if (finished) return;
+      if (!recorder || recorder.state === 'inactive') {
+        finishExport(new Error('The browser stopped recording before the play was complete.'), false);
+        return;
+      }
+      try {
+        recorder.stop();
+        stopWatchdogId = setTimeout(() => {
+          finishExport(new Error('The browser did not finish the video recording.'), false);
+        }, 10000);
+      } catch (error) {
+        finishExport(error, false);
       }
     };
 
     this.state.isExporting = true;
     this.dom.exportVideoBtn.disabled = true;
-    this.showLoading('Recording Video...');
+    this.showLoading('Recording video...');
 
     try {
-      const mimeCandidates = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm'
-      ];
-      if (typeof MediaRecorder.isTypeSupported === 'function') {
-        selectedMimeType = mimeCandidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
-        if (!selectedMimeType) {
-          throw new Error('This browser does not report a supported WebM recording format.');
-        }
-      } else {
-        selectedMimeType = 'video/webm';
-      }
-
       stream = this.dom.canvas.captureStream(this.config.video.fps);
-      const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
-      recorder = options ? new MediaRecorder(stream, options) : new MediaRecorder(stream);
+      const recorderSetup = PlaymakerExport.createMediaRecorder(stream, window.MediaRecorder);
+      recorder = recorderSetup.recorder;
+      selectedMimeType = recorderSetup.mimeType;
       this.videoRecorder = recorder;
       this.videoStream = stream;
 
@@ -2353,60 +2366,77 @@ shouldSaveState() {
       };
       recorder.onstop = () => finishExport(null, true);
 
-      recorder.start(250);
-
       let frameToPlay = 0;
       let frameStartTime = 0;
       let holdingFinalFrame = false;
       let finalFrameHoldStart = 0;
 
+      const scheduleNextFrame = callback => {
+        animationRequestId = window.requestAnimationFrame(callback);
+        this.videoAnimationFrameId = animationRequestId;
+      };
+
       const recordAnimationLoop = timestamp => {
+        animationRequestId = null;
+        this.videoAnimationFrameId = null;
         if (finished) return;
+
         if (!this.state.isExporting) {
-          if (recorder.state !== 'inactive') recorder.stop();
-          else finishExport(new Error('Video export was interrupted.'), false);
+          stopRecording();
           return;
         }
-        if (frameStartTime === 0) frameStartTime = timestamp;
 
-        if (holdingFinalFrame) {
-          if (timestamp - finalFrameHoldStart >= this.config.animation.finalFrameHold) {
-            if (recorder.state !== 'inactive') recorder.stop();
+        try {
+          if (frameStartTime === 0) frameStartTime = timestamp;
+
+          if (holdingFinalFrame) {
+            if (timestamp - finalFrameHoldStart >= this.config.animation.finalFrameHold) {
+              stopRecording();
+            } else {
+              scheduleNextFrame(recordAnimationLoop);
+            }
+            return;
+          }
+
+          const currentRecordFrame = this.state.frames[frameToPlay];
+          if (!currentRecordFrame) {
+            finishExport(new Error('A play frame was missing during recording.'), false);
+            return;
+          }
+
+          const elapsed = timestamp - frameStartTime;
+          const progress = Math.min(1, elapsed / this.config.animation.speed);
+          this._renderAnimationFrame(progress, currentRecordFrame);
+
+          if (progress < 1) {
+            scheduleNextFrame(recordAnimationLoop);
           } else {
-            this.videoAnimationFrameId = requestAnimationFrame(recordAnimationLoop);
+            frameToPlay++;
+            frameStartTime = 0;
+            if (frameToPlay >= this.state.frames.length) {
+              holdingFinalFrame = true;
+              finalFrameHoldStart = timestamp;
+            }
+            scheduleNextFrame(recordAnimationLoop);
           }
-          return;
-        }
-
-        const currentRecordFrame = this.state.frames[frameToPlay];
-        if (!currentRecordFrame) {
-          if (recorder.state !== 'inactive') recorder.stop();
-          else finishExport(new Error('A play frame was missing during recording.'), false);
-          return;
-        }
-
-        const elapsed = timestamp - frameStartTime;
-        const progress = Math.min(1, elapsed / this.config.animation.speed);
-        this._renderAnimationFrame(progress, currentRecordFrame);
-
-        if (progress < 1) {
-          this.videoAnimationFrameId = requestAnimationFrame(recordAnimationLoop);
-        } else {
-          frameToPlay++;
-          frameStartTime = 0;
-          if (frameToPlay >= this.state.frames.length) {
-            holdingFinalFrame = true;
-            finalFrameHoldStart = timestamp;
-          }
-          this.videoAnimationFrameId = requestAnimationFrame(recordAnimationLoop);
+        } catch (renderError) {
+          finishExport(renderError, false);
         }
       };
 
-      this.videoAnimationFrameId = requestAnimationFrame(recordAnimationLoop);
+      recorder.start(1000);
+      watchdogId = setTimeout(() => {
+        finishExport(new Error('Video export timed out. Keep this tab visible while the video is recording.'), false);
+      }, Math.max(60000,
+        this.state.frames.length * this.config.animation.speed +
+        this.config.animation.finalFrameHold + 30000
+      ));
+      scheduleNextFrame(recordAnimationLoop);
     } catch (error) {
       finishExport(error, false);
     }
   }
+
 }
 
 // ============================================================================
