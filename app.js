@@ -2143,88 +2143,97 @@ shouldSaveState() {
 
 
 
-  handleExportPDF = () => {
+  handleExportPDF = async () => {
     if (this.state.isAnimating || this.state.isExporting) return;
     this.flushPendingNotes();
+    this.clearExportDownload();
+
     const originalFrameIndex = this.state.currentFrameIndex;
+    const playName = this.dom.playNameInput.value.trim() || 'Untitled Play';
+    let exportError = null;
+
     this.state.isExporting = true;
     this.dom.exportPdfBtn.disabled = true;
     this.showLoading('Generating PDF...');
 
-    setTimeout(() => {
-      try {
-        if (!window.jspdf || !window.jspdf.jsPDF) {
-          throw new Error('PDF library did not load. Check your internet connection and try again.');
-        }
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('landscape', 'mm', 'a4');
-        const margin = 12;
-        const pageW = 297;
-        const pageH = 210;
-        const imageX = margin;
-        const imageY = 34;
-        const imageW = 150;
-        const imageH = 112.5;
-        const notesX = 174;
-        const notesW = pageW - margin - notesX;
-        const lineHeight = 5.2;
-        const maxLines = Math.floor((pageH - 42 - margin) / lineHeight);
-        const playName = this.dom.playNameInput.value.trim() || 'Untitled Play';
+    try {
+      const jsPDF = this.loadPdfLibrary();
+      const doc = new jsPDF('landscape', 'mm', 'a4');
+      const margin = 12;
+      const pageW = 297;
+      const pageH = 210;
+      const imageX = margin;
+      const imageY = 34;
+      const imageW = 150;
+      const imageH = 112.5;
+      const notesX = 174;
+      const notesW = pageW - margin - notesX;
+      const lineHeight = 5.2;
+      const maxLines = Math.max(1, Math.floor((pageH - 52) / lineHeight));
+      const pdfText = value => String(value == null ? '' : value).replace(/[^ -~]/g, '?');
 
-        const addHeader = (frameIndex, continued = false) => {
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(17);
-          doc.text(playName, margin, 16);
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(10);
-          const frameLabel = 'Frame ' + (frameIndex + 1) + ' of ' + this.state.frames.length;
-          doc.text(frameLabel + (continued ? ' — Notes continued' : ''), margin, 24);
-          doc.setDrawColor(210, 216, 224);
-          doc.line(margin, 28, pageW - margin, 28);
-        };
+      const addHeader = (frameIndex, continued = false) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(17);
+        const titleLines = doc.splitTextToSize(pdfText(playName), pageW - margin * 2);
+        doc.text(titleLines, margin, 16);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        const frameLabel = 'Frame ' + (frameIndex + 1) + ' of ' + this.state.frames.length;
+        doc.text(frameLabel + (continued ? ' - Notes continued' : ''), margin, 25);
+        doc.setDrawColor(210, 216, 224);
+        doc.line(margin, 28, pageW - margin, 28);
+      };
 
-        this.state.frames.forEach((frame, index) => {
-          if (index > 0) doc.addPage();
-          this.switchFrame(index, { flushNotes: false });
-          addHeader(index);
-          doc.addImage(this.dom.canvas.toDataURL('image/png'), 'PNG', imageX, imageY, imageW, imageH);
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(13);
-          doc.text('Coaching notes', notesX, 38);
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(10);
+      for (let index = 0; index < this.state.frames.length; index++) {
+        const frame = this.state.frames[index];
+        if (index > 0) doc.addPage();
+        this.switchFrame(index, { flushNotes: false });
+        addHeader(index);
+        doc.addImage(this.dom.canvas.toDataURL('image/png'), 'PNG', imageX, imageY, imageW, imageH);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text('Coaching notes', notesX, 38);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
 
-          const lines = doc.splitTextToSize(frame.notes || 'No notes for this frame.', notesW);
-          let offset = 0;
-          while (offset < lines.length) {
-            if (offset > 0) {
-              doc.addPage();
-              addHeader(index, true);
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(10);
-            }
-            const chunk = lines.slice(offset, offset + maxLines);
-            doc.text(chunk, notesX, 46);
-            offset += chunk.length;
+        const notes = pdfText(frame.notes || 'No notes for this frame.');
+        const lines = doc.splitTextToSize(notes, notesW);
+        let offset = 0;
+        while (offset < lines.length) {
+          if (offset > 0) {
+            doc.addPage();
+            addHeader(index, true);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
           }
-        });
-
-        const filename = playName.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.pdf';
-        doc.save(filename);
-        this.setInstruction('PDF exported');
-      } catch (error) {
-        console.error('PDF export error:', error);
-        this.showAlert('Could not generate PDF: ' + error.message);
-      } finally {
-        this.state.isExporting = false;
-        this.dom.exportPdfBtn.disabled = false;
-        this.hideLoading();
-        this.switchFrame(Math.min(originalFrameIndex, this.state.frames.length - 1), { flushNotes: false });
+          const chunk = lines.slice(offset, offset + maxLines);
+          doc.text(chunk, notesX, 46);
+          offset += chunk.length;
+        }
       }
-    }, 100);
+
+      const blob = PlaymakerExport.createPdfBlob(doc, Blob);
+      const filename = PlaymakerExport.getSafeFilename(playName, 'pdf');
+      this.showExportDownload(blob, filename, 'PDF');
+    } catch (error) {
+      exportError = error;
+      console.error('PDF export error:', error);
+    } finally {
+      this.state.isExporting = false;
+      this.dom.exportPdfBtn.disabled = false;
+      this.hideLoading();
+      try {
+        this.switchFrame(Math.min(originalFrameIndex, this.state.frames.length - 1), { flushNotes: false });
+      } catch (restoreError) {
+        console.error('Could not restore the selected frame after PDF export:', restoreError);
+        if (!exportError) exportError = restoreError;
+      }
+    }
+
+    // Show errors after hiding the loading overlay so they remain visible.
+    if (exportError) this.showAlert('Could not generate PDF: ' + exportError.message);
   }
-
-
 
   handleExportVideo = () => {
     if (this.state.isAnimating || this.state.isExporting) return;
