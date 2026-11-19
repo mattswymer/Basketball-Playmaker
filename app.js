@@ -79,6 +79,11 @@ class PlaymakerApp {
       frameNotes: document.getElementById('frame-notes'),
       loadingOverlay: document.getElementById('loading-overlay'),
       loadingText: document.getElementById('loading-text'),
+      exportDownloadPanel: document.getElementById('export-download-panel'),
+      exportDownloadHeading: document.getElementById('export-download-heading'),
+      exportDownloadMessage: document.getElementById('export-download-message'),
+      exportDownloadLink: document.getElementById('export-download-link'),
+      exportDownloadDismiss: document.getElementById('export-download-dismiss'),
       playerToolIcons: document.querySelectorAll('.player-tool-icon'),
       actionWheel: document.getElementById('action-wheel'),
       wheelButtons: document.querySelectorAll('.wheel-button'),
@@ -95,6 +100,7 @@ class PlaymakerApp {
     this.lineIdCounter = 1;
     this.autosaveKey = 'basketball-playmaker-autosave-v1';
     this.autosaveTimer = null;
+    this.exportDownloadUrl = null;
     this.videoRecorder = null;
     this.videoStream = null;
     this.videoAnimationFrameId = null;
@@ -398,6 +404,43 @@ async safeOperation(operation, errorMessage) {
 
   hideLoading() {
     this.dom.loadingOverlay.classList.add('hidden');
+  }
+
+  clearExportDownload() {
+    if (this.exportDownloadUrl) {
+      URL.revokeObjectURL(this.exportDownloadUrl);
+      this.exportDownloadUrl = null;
+    }
+    if (this.dom.exportDownloadLink) {
+      this.dom.exportDownloadLink.removeAttribute('href');
+      this.dom.exportDownloadLink.removeAttribute('download');
+    }
+    if (this.dom.exportDownloadPanel) this.dom.exportDownloadPanel.classList.add('hidden');
+  }
+
+  showExportDownload(blob, filename, label) {
+    if (!(blob instanceof Blob) || blob.size === 0) {
+      throw new Error('The ' + label.toLowerCase() + ' export did not produce a file.');
+    }
+    this.clearExportDownload();
+    this.exportDownloadUrl = URL.createObjectURL(blob);
+    this.dom.exportDownloadHeading.textContent = label + ' ready';
+    this.dom.exportDownloadMessage.textContent = 'Your file is ready. Use the download link if your browser did not download it automatically.';
+    this.dom.exportDownloadLink.href = this.exportDownloadUrl;
+    this.dom.exportDownloadLink.download = filename;
+    this.dom.exportDownloadLink.textContent = 'Download ' + label;
+    this.dom.exportDownloadPanel.classList.remove('hidden');
+    try { this.dom.exportDownloadLink.click(); }
+    catch (error) { console.warn('Automatic export download was blocked:', error); }
+    this.setInstruction(label + ' ready. Use the download link if it did not download automatically.');
+  }
+
+  loadPdfLibrary() {
+    const jsPDF = window.jspdf && window.jspdf.jsPDF;
+    if (typeof jsPDF !== 'function') {
+      throw new Error('The local PDF library did not load. Refresh the page and check that vendor/jspdf.umd.min.js is present.');
+    }
+    return jsPDF;
   }
 
   setInstruction(message) {
@@ -1386,6 +1429,7 @@ shouldSaveState() {
     this.dom.loadBtn.addEventListener('click', () => this.dom.loadFileInput.click());
     this.dom.exportPdfBtn.addEventListener('click', this.handleExportPDF);
     this.dom.exportVideoBtn.addEventListener('click', this.handleExportVideo);
+    this.dom.exportDownloadDismiss.addEventListener('click', () => this.clearExportDownload());
     this.dom.addFrameBtn.addEventListener('click', this.handleAddFrame);
     this.dom.deleteFrameBtn.addEventListener('click', this.handleDeleteFrame);
     this.dom.undoBtn.addEventListener('click', this.undo);
