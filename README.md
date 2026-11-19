@@ -79,6 +79,11 @@ Starting a new play or loading another file prompts before replacing unsaved cha
 | `export-utils.js` | Compatible video recording setup and export file helpers |
 | `vendor/jspdf.umd.min.js` | Bundled PDF generation library |
 | `vendor/JSPDF-LICENSE.txt` | jsPDF MIT license |
+| `tests/export.test.cjs` | Regression tests for export helper behavior |
+| `tests/browser-exports.test.cjs` | Chromium end-to-end PDF and video download test |
+| `export-utils.js` | Compatible video recording setup and export file helpers |
+| `vendor/jspdf.umd.min.js` | Bundled PDF generation library |
+| `vendor/JSPDF-LICENSE.txt` | jsPDF MIT license |
 | `images/` | Half-court and full-court artwork |
 
 ## Development checks
@@ -92,7 +97,7 @@ npm test
 npm run check
 ```
 
-Tests cover play-file validation, compatibility normalization, ID repair, court coordinate normalization, next-frame movement, ball-possession transfers, export filename handling, video format selection and fallback, and PDF Blob creation. Use [TESTING.md](TESTING.md) for the browser-level interaction, responsive-layout, accessibility, and export regression checklist before a release.
+Unit tests cover play-file validation, compatibility normalization, ID repair, court coordinate normalization, next-frame movement, ball-possession transfers, export filenames, video format selection and fallback, and PDF Blob creation. A separate GitHub Actions browser-smoke job installs Chromium and exercises real PDF and video downloads. Complete the manual touch-device, accessibility, and cross-browser checklist in [TESTING.md](TESTING.md) before release.
 
 ## License
 
