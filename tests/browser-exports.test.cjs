@@ -72,6 +72,7 @@ function startServer() {
     await page.mouse.click(bounds.x + bounds.width * 0.35, bounds.y + bounds.height * 0.5);
     await page.locator('#add-frame').click();
     await page.locator('.frame-thumbnail').nth(1).waitFor();
+    await page.locator('.frame-thumbnail').first().click();
 
     // PDF is generated from the bundled jsPDF library and should produce a
     // real file plus a persistent in-app download link.
