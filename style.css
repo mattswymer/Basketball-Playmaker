@@ -512,24 +512,77 @@ button { -webkit-tap-highlight-color: transparent; }
   line-height: 1.45;
 }
 
-#donationLinks {
+/* Export-ready download notice */
+.export-download-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 950;
   display: flex;
   align-items: center;
-  gap: 9px;
-  margin-top: 20px;
-  padding: 12px 0 2px;
-  color: #718096;
-  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+  gap: 12px;
+  width: min(620px, calc(100vw - 36px));
+  padding: 14px 16px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid #b8c8dc;
+  border-radius: var(--radius-md);
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.20);
+}
+
+.export-download-panel.hidden { display: none; }
+
+.export-download-copy {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+#export-download-heading {
+  color: #17212f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+#export-download-message {
+  color: #526176;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.export-download-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 14px;
+  color: #ffffff;
+  background: var(--primary);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.export-download-link:hover { background: var(--primary-dark); }
+
+.export-download-dismiss {
+  min-height: 36px;
+  padding: 7px 10px;
+  color: #435166;
+  background: #f5f7fa;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
+  cursor: pointer;
 }
-#donationLinks img {
-  display: block;
-  width: auto;
-  max-width: 58px;
-  height: 20px;
-  object-fit: contain;
-}
+
+.export-download-dismiss:hover { background: #e9eef5; }
 
 /* Loading / message overlay */
 #loading-overlay {
@@ -679,10 +732,18 @@ button { -webkit-tap-highlight-color: transparent; }
   }
   .player-tool-icon { width: 46px; height: 46px; }
   .help-section { margin-top: 12px; }
-  #donationLinks { margin-top: 14px; }
 }
 
 @media (max-width: 420px) {
+  .export-download-panel {
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+    gap: 8px;
+    padding: 11px;
+  }
+  .export-download-copy { flex-basis: 100%; }
+  .export-download-link { flex: 1 1 auto; }
   #top-toolbar { padding: 9px; }
   .toolbar-section { gap: 6px; }
   .btn { min-height: 39px; padding: 8px 9px; font-size: 11px; }
